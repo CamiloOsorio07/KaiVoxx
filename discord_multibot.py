@@ -195,7 +195,7 @@ embed_error   = lambda t,d: make_embed("error", t, d)
 embed_music   = lambda t,d: make_embed("music", t, d)
 
 # ----------------------------
-# Decorador para validar canal de voz (ajustado)
+# Decorador
 # ----------------------------
 def requires_same_voice_channel_after_join():
     async def predicate(ctx):
@@ -212,7 +212,7 @@ def requires_same_voice_channel_after_join():
     return commands.check(predicate)
 
 # ----------------------------
-# Now Playing con validación de canal
+# Now Playing View
 # ----------------------------
 class NowPlayingView(discord.ui.View):
     def __init__(self, bot, guild_id):
@@ -270,7 +270,7 @@ class NowPlayingView(discord.ui.View):
             await interaction.response.send_message("❌ No hay música sonando.", ephemeral=True)
 
 # ----------------------------
-# Funciones Now Playing
+# Now Playing
 # ----------------------------
 async def send_now_playing_embed(song: Song):
     guild_id = song.channel.guild.id
@@ -300,7 +300,7 @@ async def update_now_playing_bar(guild_id, song):
         await asyncio.sleep(1)
 
 # ----------------------------
-# Music queue utils
+# Queue utils
 # ----------------------------
 async def ensure_queue_for_guild(guild_id: int) -> MusicQueue:
     if guild_id not in music_queues:
@@ -331,9 +331,8 @@ async def start_playback_if_needed(guild: discord.Guild):
 async def on_ready():
     log.info(f"Bot conectado como {bot.user}")
 
-    # Actividad personalizada y biografía
     activity = discord.Activity(
-        type=discord.ActivityType.listening,  # "Escuchando"
+        type=discord.ActivityType.listening,
         name="#help 🎵 | 💜 Tu asistente musical y de IA favorita (IA en proceso)"
     )
     await bot.change_presence(status=discord.Status.online, activity=activity)
@@ -343,7 +342,8 @@ async def on_message(message: discord.Message):
     if message.author.bot: return
     if message.content.startswith(f"{BOT_PREFIX}ia") or bot.user.mentioned_in(message):
         prompt = message.content.replace(f"{BOT_PREFIX}ia", "").replace(f"<@{bot.user.id}>", "").strip()
-        if not prompt: await message.channel.send("Dime qué quieres que responda.")
+        if not prompt:
+            await message.channel.send("Dime qué quieres que responda.")
         else:
             await message.channel.trigger_typing()
             response = await asyncio.to_thread(deepseek_chat_response, f"chan_{message.channel.id}", prompt)
@@ -392,7 +392,6 @@ async def cmd_play(ctx, *, search: str):
         await ctx.send(embed=embed_warning("Falta el nombre", "Debes escribir el nombre de la canción o el link."))
         return
 
-    # Conectar al canal si el bot aún no está
     if not ctx.voice_client:
         await ctx.author.voice.channel.connect()
 
@@ -402,17 +401,31 @@ async def cmd_play(ctx, *, search: str):
     info = await extract_info(search if is_url(search) else f"ytsearch:{search}")
     songs_added = 0
 
+    # ================================
+    # ✔ FIX: evitar crash en playlists
+    # ================================
     if isinstance(info, dict) and 'entries' in info and info['entries']:
         for count, entry in enumerate(info['entries']):
-            if count >= 50: break
-            url = entry.get('webpage_url') or entry.get('url')
+            if count >= 50:
+                break
+
+            if entry is None:
+                continue
+
+            url = entry.get("webpage_url") or entry.get("url")
+            if not url:
+                continue  # evita crashear con elementos vacíos
+
             title = entry.get('title', 'Unknown title')
+
             if queue.enqueue(Song(url, title, str(ctx.author), ctx.channel)):
                 songs_added += 1
+
         await ctx.send(embed=embed_music(
             "Playlist / Mix añadido",
             f"🎶 Se añadieron **{songs_added} canciones** (máximo 50).\n📂 Cola actual: **{len(queue)}** / {queue.limit}"
         ))
+
     else:
         url = info.get('webpage_url') or info.get('url')
         title = info.get('title', 'Unknown title')
@@ -471,4 +484,3 @@ async def cmd_now(ctx):
 # Run bot
 # ----------------------------
 bot.run(DISCORD_TOKEN)
-
