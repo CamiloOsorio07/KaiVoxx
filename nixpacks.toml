@@ -1,8 +1,8 @@
 [phases.setup]
 nixPkgs = ["ffmpeg"]
 
-[phases.build]
-cmds = []
+[phases.setup.environment]
+PATH = "/usr/bin:/bin:/nix/var/nix/profiles/default/bin"
 
 [start]
 cmd = "python3 discord_multibot.py"
