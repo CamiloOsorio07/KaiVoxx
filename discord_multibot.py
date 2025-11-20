@@ -100,6 +100,12 @@ YTDL_OPTS = {
     'default_search': 'auto',
     'extract_flat': 'in_playlist',
     'skip_download': True,
+    "nocheckcertificate": True,
+    "geo_bypass": True,
+    "source_address": "0.0.0.0",
+    "cookiefile": None,
+    "cookiesfrombrowser": None,
+    "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
 }
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTS)
 
@@ -167,7 +173,14 @@ async def build_ffmpeg_source(url: str):
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+            try:
+                info = ytdl.extract_info(url, download=False)
+                if info is None:
+                    await channel.send("❌ No pude obtener información del video. Puede estar bloqueado por YouTube.")
+                    return None
+            except Exception as e:
+                await channel.send(f"❌ Error al procesar YouTube:\n```{str(e)}```")
+                return None
             direct_url = info["url"]
 
         # Detectar FFmpeg automáticamente
