@@ -1,0 +1,8 @@
+[service]
+name = "discord_multibot"
+
+[build]
+builder = "heroku/buildpacks:20"
+
+[deploy]
+startCommand = "python3 discord_multibot.py"
