@@ -117,7 +117,12 @@ async def build_ffmpeg_source(video_url: str):
         return info.get('formats', [])[-1].get('url')
 
     direct_url = await asyncio.to_thread(_get_url)
-    return discord.FFmpegOpusAudio(direct_url, before_options=before_options)
+    return discord.FFmpegOpusAudio(
+        direct_url,
+        executable="/nix/var/nix/profiles/default/bin/ffmpeg",
+        before_options=before_options
+    )
+
 
 # ----------------------------
 # DeepSeek IA
