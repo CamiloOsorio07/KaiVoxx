@@ -79,6 +79,9 @@ class MusicQueue:
     def list_titles(self) -> List[str]:
         return [s.title for s in self._queue]
 
+    def __len__(self):
+        return len(self._queue)
+
 music_queues: Dict[int, MusicQueue] = {}
 conversation_history: Dict[str, List[dict]] = {}
 current_song: Dict[int, Song] = {}
@@ -125,8 +128,6 @@ def add_to_history(context_key: str, role: str, content: str, max_len: int = 10)
     conversation_history[context_key] = history[-max_len:]
 
 def deepseek_chat_response(context_key: str, user_prompt: str, model: str = "gpt-4o"):
-    if not DEEPSEEK_API_KEY:
-        return "❌ DeepSeek no está configurado."
     add_to_history(context_key, 'user', user_prompt)
     payload = {
         "model": model,
@@ -143,7 +144,7 @@ def deepseek_chat_response(context_key: str, user_prompt: str, model: str = "gpt
         return content
     except Exception as e:
         log.exception("Error DeepSeek")
-        return "❌ Error solicitando IA."
+        return "❌ Error al solicitar la IA."
 
 # ----------------------------
 # TTS
@@ -161,7 +162,8 @@ async def speak_text_in_voice(vc: discord.VoiceClient, text: str):
             response = requests.post(url, headers=headers, json=payload)
             response.raise_for_status()
             return io.BytesIO(response.content)
-        except Exception:
+        except Exception as e:
+            log.warning(f"Fallo ElevenLabs: {e}, usando gTTS")
             buf = io.BytesIO()
             gTTS(text, lang=TTS_LANGUAGE).write_to_fp(buf)
             buf.seek(0)
@@ -171,12 +173,12 @@ async def speak_text_in_voice(vc: discord.VoiceClient, text: str):
     temp_path = f"tts_{vc.guild.id}.mp3"
     with open(temp_path, "wb") as f: f.write(audio_buf.read())
     source = discord.FFmpegPCMAudio(temp_path)
-    vc.play(source, after=lambda e: (os.remove(temp_path) if os.path.exists(temp_path) else None))
+    vc.play(source, after=lambda e: (os.remove(temp_path) if os.path.exists(temp_path) else None) or (log.error(f"TTS error: {e}" if e else "")))
     while vc.is_playing():
         await asyncio.sleep(0.1)
 
 # ----------------------------
-# Embeds
+# Embeds neón
 # ----------------------------
 def make_embed(type: str, title: str, description: str):
     colors = {"success": 0x2ECC71, "info": 0x9B59B6, "warning": 0xF1C40F, "error": 0xE74C3C, "music": 0x9B59B6}
@@ -193,24 +195,24 @@ embed_error   = lambda t,d: make_embed("error", t, d)
 embed_music   = lambda t,d: make_embed("music", t, d)
 
 # ----------------------------
-# Voice checks
+# Decorador para validar canal de voz (ajustado)
 # ----------------------------
 def requires_same_voice_channel_after_join():
     async def predicate(ctx):
         vc = ctx.voice_client
         if not vc:
             if ctx.command.name != "play":
-                await ctx.send(embed=embed_warning("No estoy conectada", "Primero únete con #join o usa #play."))
+                await ctx.send(embed=embed_warning("No estoy conectada", "Primero debo unirme a un canal con #join o usando play"))
                 return False
             return True
         if not ctx.author.voice or ctx.author.voice.channel.id != vc.channel.id:
-            await ctx.send(embed=embed_warning("Canal incorrecto", "Debes estar en mi mismo canal."))
+            await ctx.send(embed=embed_warning("Canal incorrecto", "Debes estar en el mismo canal de voz que yo para usar este comando."))
             return False
         return True
     return commands.check(predicate)
 
 # ----------------------------
-# Now Playing View
+# Now Playing con validación de canal
 # ----------------------------
 class NowPlayingView(discord.ui.View):
     def __init__(self, bot, guild_id):
@@ -218,42 +220,57 @@ class NowPlayingView(discord.ui.View):
         self.bot = bot
         self.guild_id = guild_id
 
-    async def _validate(self, interaction: discord.Interaction):
+    async def _validate_user_voice(self, interaction: discord.Interaction) -> bool:
         vc = interaction.guild.voice_client
         if not vc:
-            await interaction.response.send_message("❌ No estoy en un canal.", ephemeral=True)
+            await interaction.response.send_message("❌ No estoy en un canal de voz.", ephemeral=True)
             return False
         if not interaction.user.voice or interaction.user.voice.channel.id != vc.channel.id:
-            await interaction.response.send_message("⚠️ Debes estar en mi canal.", ephemeral=True)
+            await interaction.response.send_message(
+                "⚠️ Debes estar en el mismo canal de voz que yo para usar este botón.", ephemeral=True
+            )
             return False
         return True
 
     @discord.ui.button(label="⏯ Pausa/Resume", style=discord.ButtonStyle.primary)
-    async def pause_resume(self, interaction, button):
-        if not await self._validate(interaction): return
+    async def pause_resume(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._validate_user_voice(interaction):
+            return
         vc = interaction.guild.voice_client
-        if vc.is_paused(): vc.resume()
-        else: vc.pause()
-        await interaction.response.send_message("⏯️ Done", ephemeral=True)
+        if vc.is_paused():
+            vc.resume()
+            await interaction.response.send_message("▶️ Reanudado", ephemeral=True)
+        else:
+            vc.pause()
+            await interaction.response.send_message("⏸️ Pausado", ephemeral=True)
 
     @discord.ui.button(label="⏭ Skip", style=discord.ButtonStyle.green)
-    async def skip(self, interaction, button):
-        if not await self._validate(interaction): return
+    async def skip_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._validate_user_voice(interaction):
+            return
         vc = interaction.guild.voice_client
-        vc.stop()
-        await interaction.response.send_message("⏭ Saltado", ephemeral=True)
+        if vc and vc.is_playing():
+            vc.stop()
+            await interaction.response.send_message("⏭ Canción saltada", ephemeral=True)
+        else:
+            await interaction.response.send_message("❌ No hay música sonando.", ephemeral=True)
 
     @discord.ui.button(label="🛑 Stop", style=discord.ButtonStyle.red)
-    async def stop(self, interaction, button):
-        if not await self._validate(interaction): return
+    async def stop_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._validate_user_voice(interaction):
+            return
         vc = interaction.guild.voice_client
-        vc.stop()
-        q = music_queues.get(interaction.guild.id)
-        if q: q.clear()
-        await interaction.response.send_message("🛑 Detenido", ephemeral=True)
+        if vc:
+            vc.stop()
+            queue = music_queues.get(interaction.guild.id)
+            if queue:
+                queue.clear()
+            await interaction.response.send_message("🛑 Música detenida y cola vaciada", ephemeral=True)
+        else:
+            await interaction.response.send_message("❌ No hay música sonando.", ephemeral=True)
 
 # ----------------------------
-# Now Playing Embed
+# Funciones Now Playing
 # ----------------------------
 async def send_now_playing_embed(song: Song):
     guild_id = song.channel.guild.id
@@ -261,69 +278,72 @@ async def send_now_playing_embed(song: Song):
     embed = embed_music("Now Playing ✨", f"**[{song.title}]({song.url})**")
     if "watch?v=" in song.url:
         embed.set_thumbnail(url=f"https://img.youtube.com/vi/{song.url.split('=')[1]}/hqdefault.jpg")
-    embed.add_field(name="Requested by", value=song.requester_name)
-    embed.add_field(name="Source", value="YouTube")
-    embed.add_field(name="Time Elapsed", value="0:00")
+    embed.add_field(name="Requested by", value=f"💜 {song.requester_name}", inline=True)
+    embed.add_field(name="Source", value="YouTube 🎵", inline=True)
+    embed.add_field(name="Time Elapsed", value="0:00", inline=False)
     msg = await song.channel.send(embed=embed, view=view)
     now_playing_messages[guild_id] = msg
     asyncio.create_task(update_now_playing_bar(guild_id, song))
 
-async def update_now_playing_bar(guild_id:int, song):
-    start = time.time()
+async def update_now_playing_bar(guild_id, song):
+    start_time = time.time()
     msg = now_playing_messages.get(guild_id)
     if not msg: return
     while True:
         vc = msg.guild.voice_client
         if not vc or not vc.is_playing(): break
-        elapsed = int(time.time()-start)
+        elapsed = int(time.time() - start_time)
         embed = msg.embeds[0]
-        embed.set_field_at(2, name="Time Elapsed", value=f"{elapsed//60:02}:{elapsed%60:02}")
+        embed.set_field_at(2, name="Time Elapsed", value=f"{elapsed//60:02}:{elapsed%60:02}", inline=False)
         try: await msg.edit(embed=embed)
         except: break
         await asyncio.sleep(1)
 
 # ----------------------------
-# Queue utils
+# Music queue utils
 # ----------------------------
-async def ensure_queue_for_guild(gid):
-    if gid not in music_queues:
-        music_queues[gid] = MusicQueue(limit=MAX_QUEUE_LENGTH)
-    return music_queues[gid]
+async def ensure_queue_for_guild(guild_id: int) -> MusicQueue:
+    if guild_id not in music_queues:
+        music_queues[guild_id] = MusicQueue(limit=MAX_QUEUE_LENGTH)
+    return music_queues[guild_id]
 
-async def start_playback_if_needed(guild):
+async def start_playback_if_needed(guild: discord.Guild):
     vc = guild.voice_client
     if not vc or not vc.is_connected(): return
     queue = music_queues.get(guild.id)
-    if not queue or len(queue)==0: return
+    if not queue or len(queue) == 0: return
     if not vc.is_playing():
         song = queue.dequeue()
+        if not song: return
         try:
             source = await build_ffmpeg_source(song.url)
-            vc.play(source, after=lambda e: asyncio.run_coroutine_threadsafe(start_playback_if_needed(guild), bot.loop))
+            vc.play(source, after=lambda err: asyncio.run_coroutine_threadsafe(start_playback_if_needed(guild), bot.loop) or (log.error(f"Playback error: {err}" if err else "")))
             current_song[guild.id] = song
             asyncio.create_task(send_now_playing_embed(song))
-        except:
-            await song.channel.send("❌ Error al procesar audio.")
+        except Exception:
+            log.exception("Error iniciando reproducción")
+            asyncio.create_task(song.channel.send("❌ Error al preparar el audio. Saltando..."))
 
 # ----------------------------
-# Events
+# Bot events
 # ----------------------------
 @bot.event
 async def on_ready():
+    log.info(f"Bot conectado como {bot.user}")
+
+    # Actividad personalizada y biografía
     activity = discord.Activity(
-        type=discord.ActivityType.listening,
-        name="#help 🎵 | 💜 Tu asistente musical y de IA"
+        type=discord.ActivityType.listening,  # "Escuchando"
+        name="#help 🎵 | 💜 Tu asistente musical y de IA favorita (IA en proceso)"
     )
     await bot.change_presence(status=discord.Status.online, activity=activity)
-    log.info(f"Bot listo como {bot.user}")
 
 @bot.event
-async def on_message(message):
+async def on_message(message: discord.Message):
     if message.author.bot: return
     if message.content.startswith(f"{BOT_PREFIX}ia") or bot.user.mentioned_in(message):
-        prompt = message.content.replace(f"{BOT_PREFIX}ia","").strip()
-        if not prompt:
-            await message.channel.send("Dime algo para responder.")
+        prompt = message.content.replace(f"{BOT_PREFIX}ia", "").replace(f"<@{bot.user.id}>", "").strip()
+        if not prompt: await message.channel.send("Dime qué quieres que responda.")
         else:
             await message.channel.trigger_typing()
             response = await asyncio.to_thread(deepseek_chat_response, f"chan_{message.channel.id}", prompt)
@@ -333,16 +353,19 @@ async def on_message(message):
     await bot.process_commands(message)
 
 # ----------------------------
-# Commands
+# Comandos
 # ----------------------------
 @bot.command(name="join")
 async def cmd_join(ctx):
-    if ctx.author.voice:
+    if ctx.author.voice and ctx.author.voice.channel:
         channel = ctx.author.voice.channel
+        if ctx.voice_client and ctx.voice_client.channel.id == channel.id:
+            await ctx.send(embed=embed_info("Ya estoy aquí", f"Ya estoy conectada en **{channel.name}** ✨"))
+            return
         await channel.connect()
-        await ctx.send(embed=embed_success("Conectada", f"Me uní a **{channel.name}**"))
+        await ctx.send(embed=embed_success("Conectada al canal", f"Me uní a **{channel.name}** 🎧"))
     else:
-        await ctx.send(embed=embed_warning("Únete a un canal", "Debes estar en voz."))
+        await ctx.send(embed=embed_warning("No estás en un canal", "Debes unirte primero a un canal de voz."))
 
 @bot.command(name="leave")
 async def cmd_leave(ctx):
@@ -350,41 +373,58 @@ async def cmd_leave(ctx):
         await ctx.voice_client.disconnect()
         q = music_queues.get(ctx.guild.id)
         if q: q.clear()
-        await ctx.send(embed=embed_success("Desconectada", "Limpié la cola."))
+        await ctx.send(embed=embed_success("Desconectada", "Me desconecté del canal y limpié la cola 🧹"))
     else:
-        await ctx.send(embed=embed_warning("No estoy conectada", "No estoy en ningún canal."))
+        await ctx.send(embed=embed_warning("No estoy conectada", "No estoy en ningún canal de voz."))
+
 
 @bot.command(name="play")
 @requires_same_voice_channel_after_join()
-async def cmd_play(ctx, *, search):
-    if not search:
-        await ctx.send(embed=embed_warning("Falta nombre", "Pon una canción."))
+async def cmd_play(ctx, *, search: str):
+    if not ctx.author.voice or not ctx.author.voice.channel:
+        await ctx.send(embed=embed_warning(
+            "No estás en un canal de voz",
+            "Debes unirte a un canal de voz antes de usar #play."
+        ))
         return
+
+    if not search:
+        await ctx.send(embed=embed_warning("Falta el nombre", "Debes escribir el nombre de la canción o el link."))
+        return
+
+    # Conectar al canal si el bot aún no está
     if not ctx.voice_client:
         await ctx.author.voice.channel.connect()
 
     queue = await ensure_queue_for_guild(ctx.guild.id)
-    await ctx.send(embed=embed_info("Buscando", f"🔍 **{search}**"))
+    await ctx.send(embed=embed_info("Buscando en YouTube…", f"🔍 **{search}**"))
 
     info = await extract_info(search if is_url(search) else f"ytsearch:{search}")
+    songs_added = 0
 
-    added = 0
-    if "entries" in info:
-        for i, entry in enumerate(info["entries"]):
-            if i>=50: break
-            url = entry.get("webpage_url")
-            title = entry.get("title")
-            if queue.enqueue(Song(url,title,str(ctx.author),ctx.channel)):
-                added+=1
-        await ctx.send(embed=embed_music("Playlist añadida", f"Agregadas **{added}** canciones."))
+    if isinstance(info, dict) and 'entries' in info and info['entries']:
+        for count, entry in enumerate(info['entries']):
+            if count >= 50: break
+            url = entry.get('webpage_url') or entry.get('url')
+            title = entry.get('title', 'Unknown title')
+            if queue.enqueue(Song(url, title, str(ctx.author), ctx.channel)):
+                songs_added += 1
+        await ctx.send(embed=embed_music(
+            "Playlist / Mix añadido",
+            f"🎶 Se añadieron **{songs_added} canciones** (máximo 50).\n📂 Cola actual: **{len(queue)}** / {queue.limit}"
+        ))
     else:
-        url = info.get("webpage_url")
-        title = info.get("title")
-        if queue.enqueue(Song(url,title,str(ctx.author),ctx.channel)):
-            added=1
-        await ctx.send(embed=embed_music("Añadida", f"🎧 {title}"))
+        url = info.get('webpage_url') or info.get('url')
+        title = info.get('title', 'Unknown title')
+        if queue.enqueue(Song(url, title, str(ctx.author), ctx.channel)):
+            songs_added = 1
+        await ctx.send(embed=embed_music(
+            "Canción añadida",
+            f"🎧 Ahora en cola: **{title}**\n📂 Posición: **{len(queue)}**"
+        ))
 
     await start_playback_if_needed(ctx.guild)
+
 
 @bot.command(name="skip")
 @requires_same_voice_channel_after_join()
@@ -392,9 +432,9 @@ async def cmd_skip(ctx):
     vc = ctx.voice_client
     if vc and vc.is_playing():
         vc.stop()
-        await ctx.send(embed=embed_info("Saltado", "⏭"))
+        await ctx.send(embed=embed_info("Saltado", "⏭ Se saltó la canción actual."))
     else:
-        await ctx.send(embed=embed_warning("Nada", "No estoy reproduciendo."))
+        await ctx.send(embed=embed_warning("Nada reproduciéndose", "No hay ninguna canción sonando."))
 
 @bot.command(name="stop")
 @requires_same_voice_channel_after_join()
@@ -404,18 +444,18 @@ async def cmd_stop(ctx):
         vc.stop()
         q = music_queues.get(ctx.guild.id)
         if q: q.clear()
-        await ctx.send(embed=embed_error("Detenido", "Música y cola detenidas."))
+        await ctx.send(embed=embed_error("Reproducción detenida", "🛑 Cola eliminada y música detenida."))
     else:
-        await ctx.send(embed=embed_warning("Nada", "No hay música."))
+        await ctx.send(embed=embed_warning("Nada reproduciéndose", "No hay música sonando."))
 
 @bot.command(name="queue")
 @requires_same_voice_channel_after_join()
 async def cmd_queue(ctx):
-    q = music_queues.get(ctx.guild.id)
-    if not q or len(q)==0:
-        await ctx.send(embed=embed_info("Cola vacía", "No hay canciones."))
+    queue = music_queues.get(ctx.guild.id)
+    if not queue or len(queue) == 0:
+        await ctx.send(embed=embed_info("Cola vacía", "No hay canciones en la cola 🎵"))
         return
-    desc = "\n".join([f"{i+1}. {s.title}" for i,s in enumerate(q._queue)])
+    desc = "\n".join([f"{i+1}. {s.title}" for i, s in enumerate(queue._queue)])
     await ctx.send(embed=embed_music("Cola actual", desc))
 
 @bot.command(name="now")
@@ -423,14 +463,12 @@ async def cmd_queue(ctx):
 async def cmd_now(ctx):
     song = current_song.get(ctx.guild.id)
     if song:
-        await ctx.send(embed=embed_music(
-            "Reproduciendo",
-            f"🎧 **[{song.title}]({song.url})**\nPedido por {song.requester_name}"
-        ))
+        await ctx.send(embed=embed_music("Ahora reproduciendo", f"🎧 **[{song.title}]({song.url})**\n💜 Pedido por {song.requester_name}"))
     else:
-        await ctx.send(embed=embed_info("Nada", "No estoy reproduciendo."))
+        await ctx.send(embed=embed_info("Nada reproduciéndose", "No hay música sonando actualmente."))
 
 # ----------------------------
 # Run bot
 # ----------------------------
 bot.run(DISCORD_TOKEN)
+
