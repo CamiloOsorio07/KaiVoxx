@@ -16,6 +16,7 @@ from discord.ext import commands
 import requests
 import yt_dlp
 import shutil
+import subprocess
 from gtts import gTTS
 
 # ----------------------------
@@ -104,6 +105,30 @@ ytdl = yt_dlp.YoutubeDL(YTDL_OPTS)
 
 async def extract_info(search_or_url: str):
     return await asyncio.to_thread(lambda: ytdl.extract_info(search_or_url, download=False))
+
+def debug_ffmpeg_locations():
+    print("=== DEBUG FFMPEG LOCATIONS ===")
+
+    # Ver PATH
+    print("PATH:", os.environ.get("PATH", ""))
+
+    # Buscar ffmpeg con which
+    ffm = subprocess.getoutput("which ffmpeg")
+    print("which ffmpeg →", ffm)
+
+    # Buscar todos los ffmpeg posibles
+    possible_paths = [
+        "/usr/bin/ffmpeg",
+        "/usr/local/bin/ffmpeg",
+        "/bin/ffmpeg",
+        "/nix/var/nix/profiles/default/bin/ffmpeg",
+        "/nix/store",
+    ]
+
+    for path in possible_paths:
+        print(f"exists({path}) =", os.path.exists(path))
+
+debug_ffmpeg_locations()
 
 def is_url(string: str) -> bool:
     return string.startswith(("http://", "https://"))
