@@ -176,7 +176,7 @@ async def build_ffmpeg_source(url: str):
 
         return discord.FFmpegOpusAudio(
             direct_url,
-            executable=ffmpeg_exec,
+            executable="/nix/var/nix/profiles/default/bin/ffmpeg",
             before_options="-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
         )
 

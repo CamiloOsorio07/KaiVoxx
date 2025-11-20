@@ -1,5 +1,8 @@
 [phases.setup]
-nixPkgs = ["ffmpeg"]
+nixPkgs = ["ffmpeg", "libopus", "opusfile", "libogg"]
+
+[variables]
+LD_LIBRARY_PATH = "/usr/lib:/usr/local/lib:/nix/var/nix/profiles/default/lib"
 
 [start]
 cmd = "python3 discord_multibot.py"
