@@ -1,0 +1,8 @@
+[phases.setup]
+nixPkgs = ["ffmpeg"]
+
+[phases.build]
+cmds = []
+
+[start]
+cmd = "python3 discord_multibot.py"
