@@ -1,0 +1,8 @@
+[build]
+nixpacks = true
+
+[phases.setup]
+nixPkgs = ["ffmpeg"]
+
+[start]
+cmd = "python3 discord_multibot.py"
