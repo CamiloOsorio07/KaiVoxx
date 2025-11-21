@@ -1,8 +1,12 @@
 [phases.setup]
-nixPkgs = ["ffmpeg", "libopus", "opusfile", "libogg"]
+nixPkgs = ["python312", "ffmpeg", "libopus", "opusfile", "libogg"]
 
-[variables]
-LD_LIBRARY_PATH = "/usr/lib:/usr/local/lib:/nix/var/nix/profiles/default/lib"
+[phases.install]
+cmds = [
+    "python3 -m venv /opt/venv",
+    ". /opt/venv/bin/activate",
+    "pip install -r requirements.txt"
+]
 
 [start]
 cmd = "python3 discord_multibot.py"
