@@ -1,5 +1,5 @@
 [build]
-nixpacksCommandOverrides = [
-    "apt-get update",
-    "apt-get install -y ffmpeg"
-]
+builder = "NIXPACKS"
+
+[build.env]
+NIXPACKS_PKGS = "ffmpeg"
