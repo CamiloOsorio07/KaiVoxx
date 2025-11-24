@@ -93,7 +93,13 @@ now_playing_messages: Dict[int, discord.Message] = {}
 # YouTube extraction (AWS FIXED)
 # ----------------------------
 YTDL_OPTS = {
-    'format': 'bestaudio[protocol!=m3u8][protocol!=m3u8_native]/bestaudio/best',
+    # Forzar formatos que NO usen HLS (.m3u8) que generan 403 en AWS
+    'format': (
+        'bestaudio[acodec=opus][ext=webm][protocol!=m3u8][protocol!=m3u8_native]/'
+        'bestaudio[protocol!=m3u8][protocol!=m3u8_native]/'
+        'bestaudio/best'
+    ),
+
     'noplaylist': False,
     'cookiefile': 'cookies.txt',
     'quiet': True,
@@ -102,12 +108,18 @@ YTDL_OPTS = {
     'extract_flat': 'in_playlist',
     'skip_download': True,
 
-    # Evita totalmente HLS (*.m3u8) que genera 403 en datacenters
+    # Más filtros anti HLS y fixes de AWS
     'force_generic_extractor': False,
     'allow_unplayable_formats': False,
     'ignore_no_formats_error': True,
     'geo_bypass': True,
     'nocheckcertificate': True,
+
+    # Headers necesarios en AWS/Ubuntu para evitar 403
+    'http_headers': {
+        'User-Agent': 'Mozilla/5.0',
+        'Accept-Language': 'en-US,en;q=0.5'
+    }
 }
 
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTS)
@@ -127,22 +139,28 @@ async def build_ffmpeg_source(video_url: str):
     def _get_url():
         info = ytdl.extract_info(video_url, download=False)
 
-        # Si yt-dlp ya entregó el URL directo
+        # Si yt-dlp entrega la URL directa
         if 'url' in info:
             return info['url']
 
-        # Buscar formato válido que NO sea HLS
+        # Buscar formato válido NO-HLS
         for f in info.get("formats", []):
-            if f.get("protocol") not in ["m3u8", "m3u8_native"]:
-                if f.get("url"):
-                    return f["url"]
+            proto = f.get("protocol")
+            url = f.get("url")
 
-        # Último recurso (nunca debería pasar)
+            if url and proto not in ("m3u8", "m3u8_native"):
+                return url
+
+        # Último recurso si no encuentra ningún formato (no debería pasar)
         return info.get("formats", [])[-1].get("url")
 
     direct_url = await asyncio.to_thread(_get_url)
 
-    return discord.FFmpegOpusAudio(direct_url, before_options=before_options)
+    return discord.FFmpegOpusAudio(
+        direct_url,
+        before_options=before_options
+    )
+
 
 
 # ----------------------------
