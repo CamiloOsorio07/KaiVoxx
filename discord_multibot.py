@@ -90,12 +90,13 @@ current_song: Dict[int, Song] = {}
 now_playing_messages: Dict[int, discord.Message] = {}
 
 # ----------------------------
-# YouTube extraction (AWS FIXED)
+# YouTube extraction (AWS FIXED DEFINITIVE)
 # ----------------------------
 YTDL_OPTS = {
-    # Forzar formatos que NO usen HLS (.m3u8) que generan 403 en AWS
+    # Forzar formatos que NO usen HLS (m3u8) → causa 403 en AWS
     'format': (
-        'bestaudio[acodec=opus][ext=webm][protocol!=m3u8][protocol!=m3u8_native]/'
+        'bestaudio[ext=m4a][protocol!=m3u8][protocol!=m3u8_native]/'
+        'bestaudio[ext=webm][protocol!=m3u8][protocol!=m3u8_native]/'
         'bestaudio[protocol!=m3u8][protocol!=m3u8_native]/'
         'bestaudio/best'
     ),
@@ -105,20 +106,28 @@ YTDL_OPTS = {
     'quiet': True,
     'no_warnings': True,
     'default_search': 'auto',
-    'extract_flat': 'in_playlist',
+    'extract_flat': False,  # se desactiva para obtener urls reales en AWS
     'skip_download': True,
 
-    # Más filtros anti HLS y fixes de AWS
-    'force_generic_extractor': False,
+    # Filtros anti HLS y fixes para AWS
     'allow_unplayable_formats': False,
     'ignore_no_formats_error': True,
     'geo_bypass': True,
     'nocheckcertificate': True,
+    'force_generic_extractor': False,
 
-    # Headers necesarios en AWS/Ubuntu para evitar 403
+    # Headers para evitar 403 en AWS
     'http_headers': {
-        'User-Agent': 'Mozilla/5.0',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
         'Accept-Language': 'en-US,en;q=0.5'
+    },
+
+    # Fuerza formato estable "android" que evita HLS en AWS
+    'extractor_args': {
+        'youtube': {
+            'player_client': ['android'],
+            'format_sort': ['+codec:avc'],  # evita HLS y DASH raros
+        }
     }
 }
 
@@ -139,20 +148,24 @@ async def build_ffmpeg_source(video_url: str):
     def _get_url():
         info = ytdl.extract_info(video_url, download=False)
 
-        # Si yt-dlp entrega la URL directa
+        # Caso 1: yt-dlp ya devolvió la URL directa → perfecto
         if 'url' in info:
             return info['url']
 
-        # Buscar formato válido NO-HLS
+        # Caso 2: buscamos el primer formato válido NO-HLS
         for f in info.get("formats", []):
-            proto = f.get("protocol")
             url = f.get("url")
+            proto = f.get("protocol")
 
             if url and proto not in ("m3u8", "m3u8_native"):
                 return url
 
-        # Último recurso si no encuentra ningún formato (no debería pasar)
-        return info.get("formats", [])[-1].get("url")
+        # Caso 3: último recurso (solo si YouTube entrega puro HLS)
+        formats = info.get("formats", [])
+        if formats:
+            return formats[-1].get("url")
+
+        raise Exception("No se pudo obtener ningún formato válido para reproducción en AWS.")
 
     direct_url = await asyncio.to_thread(_get_url)
 
@@ -160,7 +173,6 @@ async def build_ffmpeg_source(video_url: str):
         direct_url,
         before_options=before_options
     )
-
 
 
 # ----------------------------
