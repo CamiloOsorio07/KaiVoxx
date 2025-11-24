@@ -89,110 +89,39 @@ conversation_history: Dict[str, List[dict]] = {}
 current_song: Dict[int, Song] = {}
 now_playing_messages: Dict[int, discord.Message] = {}
 
-# ============================
-#  AWS-PROOF YOUTUBE EXTRACTOR
-# ============================
-
+# ----------------------------
+# YouTube extraction
+# ----------------------------
 YTDL_OPTS = {
-    'format': 'bestaudio[ext=webm]/bestaudio/best',
+    'format': 'bestaudio/best',
     'noplaylist': False,
     'cookiefile': 'cookies.txt',
     'quiet': True,
     'no_warnings': True,
-    'default_search': 'ytsearch',
-    'extract_flat': False,
+    'default_search': 'auto',
+    'extract_flat': 'in_playlist',
     'skip_download': True,
-
-    # Evitar URLs bloqueadas desde datacenter
-    'force_generic_extractor': False,
-    'geo_bypass': True,
-    'nocheckcertificate': True,
 }
-
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTS)
 
+async def extract_info(search_or_url: str):
+    return await asyncio.to_thread(lambda: ytdl.extract_info(search_or_url, download=False))
 
-# -----------------------------
-#  FIX: función faltante
-# -----------------------------
 def is_url(string: str) -> bool:
-    """Devuelve True si la cadena parece una URL."""
     return string.startswith(("http://", "https://"))
 
-
-# -----------------------------
-#  Filtrar y elegir el audio
-# -----------------------------
-def select_audio_format(info: dict):
-    """Devuelve el mejor formato con audio usable por FFmpeg."""
-    formats = info.get("formats", [])
-    if not formats:
-        return None
-
-    audio_formats = []
-
-    for f in formats:
-        # ignorar cualquier formato sin audio
-        if f.get("acodec") in [None, "none"]:
-            continue
-        
-        # ignorar HLS o protocolos m3u8 (rompen en AWS)
-        if f.get("protocol") in ["m3u8", "m3u8_native"]:
-            continue
-
-        # debe tener URL válida
-        if not f.get("url"):
-            continue
-
-        audio_formats.append(f)
-
-    if not audio_formats:
-        return None
-
-    # ordenar por bitrate (mejor calidad al final)
-    audio_formats.sort(key=lambda x: x.get("abr") or 0)
-
-    return audio_formats[-1]["url"]
-
-
-# -----------------------------
-#  Wrapper asincrónico
-# -----------------------------
-async def extract_info(query: str):
-    return await asyncio.to_thread(lambda: ytdl.extract_info(query, download=False))
-
-
-# -----------------------------
-#  Construye URL final + FFmpeg
-# -----------------------------
 async def build_ffmpeg_source(video_url: str):
-    """Devuelve un FFmpegOpusAudio listo para reproducir."""
-    
-    def _extract_final_url():
-        info = ytdl.extract_info(video_url, download=False)
-
-        # Si yt-dlp ya entrega una URL directa válida con audio
-        if "url" in info and info.get("acodec") not in ["none", None]:
-            return info["url"]
-
-        # Buscar formato válido
-        best = select_audio_format(info)
-        if best:
-            return best
-
-        raise Exception("No se encontró un formato de audio usable")
-
-    final_url = await asyncio.to_thread(_extract_final_url)
-
     before_options = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
 
-    return discord.FFmpegOpusAudio(
-        final_url,
-        before_options=before_options,
-        options="-vn"
-    )
+    def _get_url():
+        info = ytdl.extract_info(video_url, download=False)
+        if 'url' in info:
+            return info['url']
+        return info.get('formats', [])[-1].get('url')
 
- 
+    direct_url = await asyncio.to_thread(_get_url)
+    return discord.FFmpegOpusAudio(direct_url, before_options=before_options)
+
 # ----------------------------
 # DeepSeek IA
 # ----------------------------
