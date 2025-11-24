@@ -7,12 +7,6 @@ Bot Discord multifuncional:
  - Interfaz neón morado y paleta consistente
  - Comandos: play, skip, stop, queue, now, join, leave, ia
 Optimizado: reducción de objetos repetitivos, uso de asyncio.to_thread, código más limpio.
-
-NOTAS DE CAMBIO (solo lo mínimo modificado):
- - Ajusté YTDL_OPTS para obtener formatos completos (quitando extract_flat)
- - Reescribí build_ffmpeg_source para manejar: videos individuales, entradas con 'formats', playlists/mixes y errores de yt-dlp (p. ej. "Sign in to confirm")
- - Mejor manejo de excepciones en start_playback_if_needed para enviar mensajes amigables y saltar canciones problemáticas en lugar de pasar None a FFmpeg
-
 """
 
 import os
@@ -33,7 +27,7 @@ from gtts import gTTS
 # ----------------------------
 # Configuración
 # ----------------------------
-DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN")
+DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN", "MTMyNTMxMTQ2MTc1NjUwMjEwNg.GwJwPX.fSSiV0BDZNjwF2Wb8VnY4Jby_txDgQy85H1saU")
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "sk-0fc9b855ae5b4176bfc9cb08ef9fbc9c")
 DEEPSEEK_API_URL = os.environ.get("DEEPSEEK_API_URL", "https://api.deepseek.com/v1/chat/completions")
 ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "sk_50a6299c7f2d2caa4bc3bfc2b78d1c39d0d230da2905fe1e")
@@ -101,10 +95,11 @@ now_playing_messages: Dict[int, discord.Message] = {}
 YTDL_OPTS = {
     'format': 'bestaudio/best',
     'noplaylist': False,
+    'cookiefile': 'cookies.txt',
     'quiet': True,
     'no_warnings': True,
     'default_search': 'auto',
-    # quitar extract_flat para que yt-dlp entregue las "formats" completas
+    'extract_flat': 'in_playlist',
     'skip_download': True,
 }
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTS)
@@ -116,68 +111,15 @@ def is_url(string: str) -> bool:
     return string.startswith(("http://", "https://"))
 
 async def build_ffmpeg_source(video_url: str):
-    """Construye y devuelve un FFmpeg audio source listo para reproducir.
-
-    Maneja:
-      - URLs individuales
-      - entradas devueltas por "ytsearch:..." (search)
-      - playlists/mixes (recoge el primer entry si se le pasa una lista)
-      - detecta errores de "Sign in to confirm" y los propaga con texto identificable
-    """
     before_options = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
 
-    def _fetch_info():
-        try:
-            return ytdl.extract_info(video_url, download=False)
-        except Exception as e:
-            # Normalizar mensaje de error para que el llamador lo interprete
-            msg = str(e)
-            if "Sign in to confirm" in msg or "This video is age-restricted" in msg:
-                raise RuntimeError("YT_SIGNIN_OR_RESTRICTED")
-            raise
+    def _get_url():
+        info = ytdl.extract_info(video_url, download=False)
+        if 'url' in info:
+            return info['url']
+        return info.get('formats', [])[-1].get('url')
 
-    info = await asyncio.to_thread(_fetch_info)
-
-    # Cuando yt-dlp devuelve resultados de búsqueda o playlists, suele venir con 'entries'
-    entry = None
-    if isinstance(info, dict) and info.get('entries'):
-        # Buscar la primera entrada útil
-        for e in info['entries']:
-            if isinstance(e, dict):
-                entry = e
-                break
-    else:
-        entry = info
-
-    if not entry:
-        raise RuntimeError("No se pudo obtener información de yt-dlp para la URL proporcionada.")
-
-    # Si la entrada tiene 'formats', elegimos la mejor pista de audio
-    formats = entry.get('formats') or []
-    direct_url = None
-
-    if formats:
-        # Filtrar formatos que contienen audio
-        audio_formats = [f for f in formats if f.get('acodec') and f.get('acodec') != 'none']
-        if not audio_formats:
-            # fallback a cualquier formato con url
-            audio_formats = [f for f in formats if f.get('url')]
-
-        if audio_formats:
-            # elegir por bitrate estimado (abr ó tbr), si no existe tomar el último
-            def _bitrate(f):
-                return f.get('abr') or f.get('tbr') or 0
-            best = max(audio_formats, key=_bitrate)
-            direct_url = best.get('url')
-
-    # Si no encontramos formatos, intentar campos comunes
-    if not direct_url:
-        direct_url = entry.get('url') or entry.get('webpage_url')
-
-    if not direct_url:
-        raise RuntimeError("No se obtuvo una URL directa de audio desde yt-dlp.")
-
-    # Devolver un objeto AudioSource; discord acepta URLs en FFmpegOpusAudio
+    direct_url = await asyncio.to_thread(_get_url)
     return discord.FFmpegOpusAudio(direct_url, before_options=before_options)
 
 # ----------------------------
@@ -378,27 +320,12 @@ async def start_playback_if_needed(guild: discord.Guild):
         if not song: return
         try:
             source = await build_ffmpeg_source(song.url)
-            if source is None:
-                # No se pudo construir el source, saltar
-                await song.channel.send("❌ No se pudo preparar el audio para esta canción. Saltando...")
-                asyncio.create_task(start_playback_if_needed(guild))
-                return
             vc.play(source, after=lambda err: asyncio.run_coroutine_threadsafe(start_playback_if_needed(guild), bot.loop) or (log.error(f"Playback error: {err}" if err else "")))
             current_song[guild.id] = song
             asyncio.create_task(send_now_playing_embed(song))
-        except RuntimeError as rte:
-            # Errores esperados como restricciones de YouTube
-            if str(rte) == "YT_SIGNIN_OR_RESTRICTED":
-                await song.channel.send("❌ YouTube pidió inicio de sesión o el video está restringido. No puedo reproducir ese video desde este servidor. Intenta con otro link o usa búsqueda.")
-            else:
-                log.exception("Error iniciando reproducción (runtime)")
-                await song.channel.send("❌ Error al preparar el audio. Saltando...")
-            # llamada recursiva para pasar al siguiente
-            asyncio.create_task(start_playback_if_needed(guild))
         except Exception:
             log.exception("Error iniciando reproducción")
-            await song.channel.send("❌ Error al preparar el audio. Saltando...")
-            asyncio.create_task(start_playback_if_needed(guild))
+            asyncio.create_task(song.channel.send("❌ Error al preparar el audio. Saltando..."))
 
 # ----------------------------
 # Bot events
