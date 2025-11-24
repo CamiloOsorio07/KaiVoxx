@@ -33,7 +33,7 @@ from gtts import gTTS
 # ----------------------------
 # Configuración
 # ----------------------------
-DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN", "MTMyNTMxMTQ2MTc1NjUwMjEwNg.GwJwPX.fSSiV0BDZNjwF2Wb8VnY4Jby_txDgQy85H1saU")
+DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN")
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "sk-0fc9b855ae5b4176bfc9cb08ef9fbc9c")
 DEEPSEEK_API_URL = os.environ.get("DEEPSEEK_API_URL", "https://api.deepseek.com/v1/chat/completions")
 ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "sk_50a6299c7f2d2caa4bc3bfc2b78d1c39d0d230da2905fe1e")
