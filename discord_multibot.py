@@ -143,36 +143,68 @@ def is_url(string: str) -> bool:
 
 
 async def build_ffmpeg_source(video_url: str):
+    """
+    Construye un AudioSource robusto para AWS.
+    - Selecciona un formato NO-HLS.
+    - Primero intenta convertir a Opus.
+    - Si FFmpegOpusAudio falla, usa PCM (funciona siempre).
+    """
     before_options = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
+    opus_options = "-vn"
+    pcm_options = "-vn -ar 48000 -ac 2"
 
     def _get_url():
         info = ytdl.extract_info(video_url, download=False)
 
-        # Caso 1: yt-dlp ya devolvió la URL directa → perfecto
+        # Si yt-dlp ya devuelve audio directo
         if 'url' in info:
             return info['url']
 
-        # Caso 2: buscamos el primer formato válido NO-HLS
-        for f in info.get("formats", []):
+        formats = info.get("formats", [])
+
+        # Seleccionar formato NO-HLS
+        for f in formats:
             url = f.get("url")
             proto = f.get("protocol")
+            acodec = f.get("acodec")
 
-            if url and proto not in ("m3u8", "m3u8_native"):
+            if url and proto not in ("m3u8", "m3u8_native") and acodec and acodec != "none":
                 return url
 
-        # Caso 3: último recurso (solo si YouTube entrega puro HLS)
-        formats = info.get("formats", [])
-        if formats:
-            return formats[-1].get("url")
+        # Último recurso
+        for f in formats:
+            if f.get("url"):
+                return f["url"]
 
-        raise Exception("No se pudo obtener ningún formato válido para reproducción en AWS.")
+        raise Exception("No se pudo obtener un formato válido de audio.")
 
+    # Ejecutar yt-dlp sin bloquear
     direct_url = await asyncio.to_thread(_get_url)
 
-    return discord.FFmpegOpusAudio(
-        direct_url,
-        before_options=before_options
-    )
+    # -------------------------
+    # INTENTO 1 → OPUS
+    # -------------------------
+    try:
+        return discord.FFmpegOpusAudio(
+            direct_url,
+            before_options=before_options,
+            options=opus_options
+        )
+    except Exception as e:
+        log.warning(f"FFmpegOpusAudio falló ({e}). Usando PCM…")
+
+    # -------------------------
+    # INTENTO 2 → PCM (siempre funciona)
+    # -------------------------
+    try:
+        return discord.FFmpegPCMAudio(
+            direct_url,
+            before_options=before_options,
+            options=pcm_options
+        )
+    except Exception as e:
+        log.exception("FFmpegPCMAudio también falló al abrir el stream de audio")
+        raise
 
 
 # ----------------------------
