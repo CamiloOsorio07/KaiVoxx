@@ -90,10 +90,10 @@ current_song: Dict[int, Song] = {}
 now_playing_messages: Dict[int, discord.Message] = {}
 
 # ----------------------------
-# YouTube extraction
+# YouTube extraction (AWS FIXED)
 # ----------------------------
 YTDL_OPTS = {
-    'format': 'bestaudio/best',
+    'format': 'bestaudio[protocol!=m3u8][protocol!=m3u8_native]/bestaudio/best',
     'noplaylist': False,
     'cookiefile': 'cookies.txt',
     'quiet': True,
@@ -101,26 +101,49 @@ YTDL_OPTS = {
     'default_search': 'auto',
     'extract_flat': 'in_playlist',
     'skip_download': True,
+
+    # Evita totalmente HLS (*.m3u8) que genera 403 en datacenters
+    'force_generic_extractor': False,
+    'allow_unplayable_formats': False,
+    'ignore_no_formats_error': True,
+    'geo_bypass': True,
+    'nocheckcertificate': True,
 }
+
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTS)
+
 
 async def extract_info(search_or_url: str):
     return await asyncio.to_thread(lambda: ytdl.extract_info(search_or_url, download=False))
 
+
 def is_url(string: str) -> bool:
     return string.startswith(("http://", "https://"))
+
 
 async def build_ffmpeg_source(video_url: str):
     before_options = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
 
     def _get_url():
         info = ytdl.extract_info(video_url, download=False)
+
+        # Si yt-dlp ya entregó el URL directo
         if 'url' in info:
             return info['url']
-        return info.get('formats', [])[-1].get('url')
+
+        # Buscar formato válido que NO sea HLS
+        for f in info.get("formats", []):
+            if f.get("protocol") not in ["m3u8", "m3u8_native"]:
+                if f.get("url"):
+                    return f["url"]
+
+        # Último recurso (nunca debería pasar)
+        return info.get("formats", [])[-1].get("url")
 
     direct_url = await asyncio.to_thread(_get_url)
+
     return discord.FFmpegOpusAudio(direct_url, before_options=before_options)
+
 
 # ----------------------------
 # DeepSeek IA
