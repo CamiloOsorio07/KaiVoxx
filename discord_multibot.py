@@ -112,6 +112,17 @@ YTDL_OPTS = {
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTS)
 
 
+# -----------------------------
+#  FIX: función faltante
+# -----------------------------
+def is_url(string: str) -> bool:
+    """Devuelve True si la cadena parece una URL."""
+    return string.startswith(("http://", "https://"))
+
+
+# -----------------------------
+#  Filtrar y elegir el audio
+# -----------------------------
 def select_audio_format(info: dict):
     """Devuelve el mejor formato con audio usable por FFmpeg."""
     formats = info.get("formats", [])
@@ -125,7 +136,7 @@ def select_audio_format(info: dict):
         if f.get("acodec") in [None, "none"]:
             continue
         
-        # ignorar HLS o protocolos m3u8
+        # ignorar HLS o protocolos m3u8 (rompen en AWS)
         if f.get("protocol") in ["m3u8", "m3u8_native"]:
             continue
 
@@ -144,20 +155,27 @@ def select_audio_format(info: dict):
     return audio_formats[-1]["url"]
 
 
+# -----------------------------
+#  Wrapper asincrónico
+# -----------------------------
 async def extract_info(query: str):
     return await asyncio.to_thread(lambda: ytdl.extract_info(query, download=False))
 
 
+# -----------------------------
+#  Construye URL final + FFmpeg
+# -----------------------------
 async def build_ffmpeg_source(video_url: str):
     """Devuelve un FFmpegOpusAudio listo para reproducir."""
+    
     def _extract_final_url():
         info = ytdl.extract_info(video_url, download=False)
 
-        # si yt-dlp ya entrega un URL directo válido con audio
+        # Si yt-dlp ya entrega una URL directa válida con audio
         if "url" in info and info.get("acodec") not in ["none", None]:
             return info["url"]
 
-        # buscar formato válido
+        # Buscar formato válido
         best = select_audio_format(info)
         if best:
             return best
@@ -173,6 +191,7 @@ async def build_ffmpeg_source(video_url: str):
         before_options=before_options,
         options="-vn"
     )
+
  
 # ----------------------------
 # DeepSeek IA
