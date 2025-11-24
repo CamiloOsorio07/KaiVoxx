@@ -89,89 +89,91 @@ conversation_history: Dict[str, List[dict]] = {}
 current_song: Dict[int, Song] = {}
 now_playing_messages: Dict[int, discord.Message] = {}
 
-# ----------------------------
-# YouTube extraction (AWS FIXED DEFINITIVE)
-# ----------------------------
-YTDL_OPTS = {
-    # Forzar formatos que NO usen HLS (m3u8) → causa 403 en AWS
-    'format': (
-        'bestaudio[ext=m4a][protocol!=m3u8][protocol!=m3u8_native]/'
-        'bestaudio[ext=webm][protocol!=m3u8][protocol!=m3u8_native]/'
-        'bestaudio[protocol!=m3u8][protocol!=m3u8_native]/'
-        'bestaudio/best'
-    ),
+# ============================
+#  AWS-PROOF YOUTUBE EXTRACTOR
+# ============================
 
+YTDL_OPTS = {
+    'format': 'bestaudio[ext=webm]/bestaudio/best',
     'noplaylist': False,
     'cookiefile': 'cookies.txt',
     'quiet': True,
     'no_warnings': True,
-    'default_search': 'auto',
-    'extract_flat': False,  # se desactiva para obtener urls reales en AWS
+    'default_search': 'ytsearch',
+    'extract_flat': False,
     'skip_download': True,
 
-    # Filtros anti HLS y fixes para AWS
-    'allow_unplayable_formats': False,
-    'ignore_no_formats_error': True,
+    # Evitar URLs bloqueadas desde datacenter
+    'force_generic_extractor': False,
     'geo_bypass': True,
     'nocheckcertificate': True,
-    'force_generic_extractor': False,
-
-    # Headers para evitar 403 en AWS
-    'http_headers': {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        'Accept-Language': 'en-US,en;q=0.5'
-    },
-
-    # Fuerza formato estable "android" que evita HLS en AWS
-    'extractor_args': {
-        'youtube': {
-            'player_client': ['android'],
-            'format_sort': ['+codec:avc'],  # evita HLS y DASH raros
-        }
-    }
 }
 
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTS)
 
 
-async def extract_info(search_or_url: str):
-    return await asyncio.to_thread(lambda: ytdl.extract_info(search_or_url, download=False))
+def select_audio_format(info: dict):
+    """Devuelve el mejor formato con audio usable por FFmpeg."""
+    formats = info.get("formats", [])
+    if not formats:
+        return None
+
+    audio_formats = []
+
+    for f in formats:
+        # ignorar cualquier formato sin audio
+        if f.get("acodec") in [None, "none"]:
+            continue
+        
+        # ignorar HLS o protocolos m3u8
+        if f.get("protocol") in ["m3u8", "m3u8_native"]:
+            continue
+
+        # debe tener URL válida
+        if not f.get("url"):
+            continue
+
+        audio_formats.append(f)
+
+    if not audio_formats:
+        return None
+
+    # ordenar por bitrate (mejor calidad al final)
+    audio_formats.sort(key=lambda x: x.get("abr") or 0)
+
+    return audio_formats[-1]["url"]
 
 
-def is_url(string: str) -> bool:
-    return string.startswith(("http://", "https://"))
+async def extract_info(query: str):
+    return await asyncio.to_thread(lambda: ytdl.extract_info(query, download=False))
 
 
 async def build_ffmpeg_source(video_url: str):
-    before = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
-
-    def _extract():
+    """Devuelve un FFmpegOpusAudio listo para reproducir."""
+    def _extract_final_url():
         info = ytdl.extract_info(video_url, download=False)
-        
-        # Si yt-dlp devuelve URL directo normal
-        if "url" in info:
+
+        # si yt-dlp ya entrega un URL directo válido con audio
+        if "url" in info and info.get("acodec") not in ["none", None]:
             return info["url"]
 
-        # Si viene en formatos
-        fmts = info.get("formats", [])
-        if len(fmts) > 0:
-            # Filtrar solo formatos de audio
-            audio_fmts = [f for f in fmts if f.get("acodec") != "none"]
-            if len(audio_fmts) > 0:
-                return audio_fmts[-1]["url"]
+        # buscar formato válido
+        best = select_audio_format(info)
+        if best:
+            return best
 
-        raise Exception("No se encontró un stream de audio válido")
+        raise Exception("No se encontró un formato de audio usable")
 
-    direct_url = await asyncio.to_thread(_extract)
+    final_url = await asyncio.to_thread(_extract_final_url)
+
+    before_options = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
 
     return discord.FFmpegOpusAudio(
-        direct_url,
-        before_options=before,
+        final_url,
+        before_options=before_options,
         options="-vn"
     )
-
-
-
+ 
 # ----------------------------
 # DeepSeek IA
 # ----------------------------
