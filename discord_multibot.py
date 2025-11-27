@@ -27,10 +27,6 @@ DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY")
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 
-if not DISCORD_TOKEN:
-    print("❌ ERROR: Falta DISCORD_TOKEN en variables de entorno")
-    exit(1)
-
 BOT_PREFIX = "#"
 MAX_QUEUE_LENGTH = 200
 TTS_LANGUAGE = "es"
@@ -91,101 +87,35 @@ now_playing_messages: Dict[int, discord.Message] = {}
 # ----------------------------
 # YouTube extraction
 # ----------------------------
-# Cookies opcionales: si defines COOKIES_FILE en Railway, las usará; si no, omitirá cookies.
-COOKIES_FILE = os.environ.get("COOKIES_FILE")  # p.ej. "cookies.txt"
-
 YTDL_OPTS = {
     'format': 'bestaudio/best',
-    'noplaylist': False,           # procesar playlists/mixes
+    'noplaylist': False,
+    'cookiefile': 'cookies.txt',
     'quiet': True,
     'no_warnings': True,
     'default_search': 'auto',
-    'extract_flat': 'in_playlist', # mantener plano para identificar entradas del mix
+    'extract_flat': 'in_playlist',
     'skip_download': True,
 }
-if COOKIES_FILE and os.path.exists(COOKIES_FILE):
-    YTDL_OPTS['cookiefile'] = COOKIES_FILE
-
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTS)
 
 async def extract_info(search_or_url: str):
     return await asyncio.to_thread(lambda: ytdl.extract_info(search_or_url, download=False))
 
-def debug_ffmpeg_locations():
-    print("=== DEBUG FFMPEG LOCATIONS ===")
-    print("PATH:", os.environ.get("PATH", ""))
-    ffm = subprocess.getoutput("which ffmpeg")
-    print("which ffmpeg →", ffm)
-    possible_paths = [
-        "/usr/bin/ffmpeg",
-        "/usr/local/bin/ffmpeg",
-        "/bin/ffmpeg",
-        "/nix/var/nix/profiles/default/bin/ffmpeg",
-        "/nix/store",
-    ]
-    for path in possible_paths:
-        print(f"exists({path}) =", os.path.exists(path))
-
-debug_ffmpeg_locations()
-
 def is_url(string: str) -> bool:
     return string.startswith(("http://", "https://"))
 
-def find_ffmpeg():
-    ffmpeg_path = shutil.which("ffmpeg")
-    if ffmpeg_path:
-        return ffmpeg_path
-    fallback_paths = [
-        "/usr/bin/ffmpeg",
-        "/usr/local/bin/ffmpeg",
-        "/nix/var/nix/profiles/default/bin/ffmpeg",
-        "/bin/ffmpeg",
-    ]
-    for path in fallback_paths:
-        if os.path.exists(path):
-            return path
-    raise FileNotFoundError("FFmpeg no encontrado en Railway.")
+async def build_ffmpeg_source(video_url: str):
+    before_options = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
 
-# ----------------------------
-# build_ffmpeg_source (corrigida)
-# ----------------------------
-async def build_ffmpeg_source(url: str, channel: discord.TextChannel):
-    ydl_opts = {
-        "format": "bestaudio/best",
-        "quiet": True,
-        "no_warnings": True,
-        "default_search": "auto",
-    }
-    if COOKIES_FILE and os.path.exists(COOKIES_FILE):
-        ydl_opts['cookiefile'] = COOKIES_FILE
+    def _get_url():
+        info = ytdl.extract_info(video_url, download=False)
+        if 'url' in info:
+            return info['url']
+        return info.get('formats', [])[-1].get('url')
 
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl_local:
-            try:
-                info = ydl_local.extract_info(url, download=False)
-                if info is None:
-                    await channel.send("❌ No pude obtener información del video. Puede estar bloqueado por YouTube.")
-                    return None
-            except Exception as e:
-                await channel.send(f"❌ Error al procesar YouTube:\n```{str(e)}```")
-                return None
-            direct_url = info.get("url")
-            if not direct_url:
-                await channel.send("❌ No pude obtener la URL directa del audio.")
-                return None
-
-        ffmpeg_exec = find_ffmpeg()
-        print(f"[DEBUG] Usando FFmpeg en: {ffmpeg_exec}")
-
-        return discord.FFmpegOpusAudio(
-            direct_url,
-            executable=ffmpeg_exec,
-            before_options="-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
-        )
-
-    except Exception as e:
-        logging.error(f"Error construyendo FFmpeg source: {e}")
-        return None
+    direct_url = await asyncio.to_thread(_get_url)
+    return discord.FFmpegOpusAudio(direct_url, before_options=before_options)
 
 # ----------------------------
 # DeepSeek IA
@@ -246,7 +176,7 @@ async def speak_text_in_voice(vc: discord.VoiceClient, text: str):
         await asyncio.sleep(0.1)
 
 # ----------------------------
-# Embeds neón, decorador, views
+# Embeds neón
 # ----------------------------
 def make_embed(type: str, title: str, description: str):
     colors = {"success": 0x2ECC71, "info": 0x9B59B6, "warning": 0xF1C40F, "error": 0xE74C3C, "music": 0x9B59B6}
@@ -262,6 +192,9 @@ embed_warning = lambda t,d: make_embed("warning", t, d)
 embed_error   = lambda t,d: make_embed("error", t, d)
 embed_music   = lambda t,d: make_embed("music", t, d)
 
+# ----------------------------
+# Decorador para validar canal de voz (ajustado)
+# ----------------------------
 def requires_same_voice_channel_after_join():
     async def predicate(ctx):
         vc = ctx.voice_client
@@ -276,6 +209,9 @@ def requires_same_voice_channel_after_join():
         return True
     return commands.check(predicate)
 
+# ----------------------------
+# Now Playing con validación de canal
+# ----------------------------
 class NowPlayingView(discord.ui.View):
     def __init__(self, bot, guild_id):
         super().__init__(timeout=None)
@@ -288,7 +224,9 @@ class NowPlayingView(discord.ui.View):
             await interaction.response.send_message("❌ No estoy en un canal de voz.", ephemeral=True)
             return False
         if not interaction.user.voice or interaction.user.voice.channel.id != vc.channel.id:
-            await interaction.response.send_message("⚠️ Debes estar en el mismo canal de voz que yo para usar este botón.", ephemeral=True)
+            await interaction.response.send_message(
+                "⚠️ Debes estar en el mismo canal de voz que yo para usar este botón.", ephemeral=True
+            )
             return False
         return True
 
@@ -329,6 +267,9 @@ class NowPlayingView(discord.ui.View):
         else:
             await interaction.response.send_message("❌ No hay música sonando.", ephemeral=True)
 
+# ----------------------------
+# Funciones Now Playing
+# ----------------------------
 async def send_now_playing_embed(song: Song):
     guild_id = song.channel.guild.id
     view = NowPlayingView(bot, guild_id)
@@ -357,7 +298,7 @@ async def update_now_playing_bar(guild_id, song):
         await asyncio.sleep(1)
 
 # ----------------------------
-# Queue utils
+# Music queue utils
 # ----------------------------
 async def ensure_queue_for_guild(guild_id: int) -> MusicQueue:
     if guild_id not in music_queues:
@@ -373,13 +314,8 @@ async def start_playback_if_needed(guild: discord.Guild):
         song = queue.dequeue()
         if not song: return
         try:
-            source = await build_ffmpeg_source(song.url, song.channel)
-            vc.play(
-                source,
-                after=lambda err: asyncio.run_coroutine_threadsafe(
-                    start_playback_if_needed(guild), bot.loop
-                ) or (log.error(f"Playback error: {err}" if err else ""))
-            )
+            source = await build_ffmpeg_source(song.url)
+            vc.play(source, after=lambda err: asyncio.run_coroutine_threadsafe(start_playback_if_needed(guild), bot.loop) or (log.error(f"Playback error: {err}" if err else "")))
             current_song[guild.id] = song
             asyncio.create_task(send_now_playing_embed(song))
         except Exception:
@@ -392,8 +328,10 @@ async def start_playback_if_needed(guild: discord.Guild):
 @bot.event
 async def on_ready():
     log.info(f"Bot conectado como {bot.user}")
+
+    # Actividad personalizada y biografía
     activity = discord.Activity(
-        type=discord.ActivityType.listening,
+        type=discord.ActivityType.listening,  # "Escuchando"
         name="#help 🎵 | 💜 Tu asistente musical y de IA favorita (IA en proceso)"
     )
     await bot.change_presence(status=discord.Status.online, activity=activity)
@@ -403,8 +341,7 @@ async def on_message(message: discord.Message):
     if message.author.bot: return
     if message.content.startswith(f"{BOT_PREFIX}ia") or bot.user.mentioned_in(message):
         prompt = message.content.replace(f"{BOT_PREFIX}ia", "").replace(f"<@{bot.user.id}>", "").strip()
-        if not prompt:
-            await message.channel.send("Dime qué quieres que responda.")
+        if not prompt: await message.channel.send("Dime qué quieres que responda.")
         else:
             await message.channel.trigger_typing()
             response = await asyncio.to_thread(deepseek_chat_response, f"chan_{message.channel.id}", prompt)
@@ -438,17 +375,22 @@ async def cmd_leave(ctx):
     else:
         await ctx.send(embed=embed_warning("No estoy conectada", "No estoy en ningún canal de voz."))
 
+
 @bot.command(name="play")
 @requires_same_voice_channel_after_join()
 async def cmd_play(ctx, *, search: str):
     if not ctx.author.voice or not ctx.author.voice.channel:
-        await ctx.send(embed=embed_warning("No estás en un canal de voz", "Debes unirte a un canal de voz antes de usar #play."))
+        await ctx.send(embed=embed_warning(
+            "No estás en un canal de voz",
+            "Debes unirte a un canal de voz antes de usar #play."
+        ))
         return
 
     if not search:
         await ctx.send(embed=embed_warning("Falta el nombre", "Debes escribir el nombre de la canción o el link."))
         return
 
+    # Conectar al canal si el bot aún no está
     if not ctx.voice_client:
         await ctx.author.voice.channel.connect()
 
@@ -458,37 +400,17 @@ async def cmd_play(ctx, *, search: str):
     info = await extract_info(search if is_url(search) else f"ytsearch:{search}")
     songs_added = 0
 
-    # Playlist / Mix: entradas "planas" → resolver cada una a su video real
     if isinstance(info, dict) and 'entries' in info and info['entries']:
         for count, entry in enumerate(info['entries']):
-            if count >= 50:
-                break
-            if not entry:
-                continue
-
-            # Para extract_flat, típicamente trae 'url' relativo (id) y/o 'webpage_url'
-            entry_url = entry.get("webpage_url") or entry.get("url")
-            if not entry_url:
-                continue
-
-            # Resolver a info completa del video (no plana)
-            try:
-                full = await asyncio.to_thread(lambda: yt_dlp.YoutubeDL({'quiet': True, 'no_warnings': True}).extract_info(entry_url, download=False))
-                real_url = full.get("webpage_url") or entry_url
-                title = full.get("title") or entry.get('title') or 'Unknown title'
-            except Exception:
-                # Si falla la resolución, al menos encolar con lo que tengamos
-                real_url = entry_url
-                title = entry.get('title', 'Unknown title')
-
-            if queue.enqueue(Song(real_url, title, str(ctx.author), ctx.channel)):
+            if count >= 50: break
+            url = entry.get('webpage_url') or entry.get('url')
+            title = entry.get('title', 'Unknown title')
+            if queue.enqueue(Song(url, title, str(ctx.author), ctx.channel)):
                 songs_added += 1
-
         await ctx.send(embed=embed_music(
             "Playlist / Mix añadido",
             f"🎶 Se añadieron **{songs_added} canciones** (máximo 50).\n📂 Cola actual: **{len(queue)}** / {queue.limit}"
         ))
-
     else:
         url = info.get('webpage_url') or info.get('url')
         title = info.get('title', 'Unknown title')
@@ -500,6 +422,7 @@ async def cmd_play(ctx, *, search: str):
         ))
 
     await start_playback_if_needed(ctx.guild)
+
 
 @bot.command(name="skip")
 @requires_same_voice_channel_after_join()
