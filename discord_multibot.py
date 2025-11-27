@@ -94,11 +94,11 @@ now_playing_messages: Dict[int, discord.Message] = {}
 # ----------------------------
 YTDL_OPTS = {
     'format': 'bestaudio/best',
-    'noplaylist': False,
+    'noplaylist': False,   # ✅ permite procesar playlists completas
     'quiet': True,
     'no_warnings': True,
     'default_search': 'auto',
-    'extract_flat': 'in_playlist',
+    # ❌ quitamos 'extract_flat': 'in_playlist'
     'skip_download': True,
     "nocheckcertificate": True,
     "geo_bypass": True,
@@ -108,6 +108,7 @@ YTDL_OPTS = {
     "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
 }
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTS)
+
 
 async def extract_info(search_or_url: str):
     return await asyncio.to_thread(lambda: ytdl.extract_info(search_or_url, download=False))
