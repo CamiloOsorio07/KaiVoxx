@@ -114,15 +114,9 @@ async def extract_info(search_or_url: str):
 
 def debug_ffmpeg_locations():
     print("=== DEBUG FFMPEG LOCATIONS ===")
-
-    # Ver PATH
     print("PATH:", os.environ.get("PATH", ""))
-
-    # Buscar ffmpeg con which
     ffm = subprocess.getoutput("which ffmpeg")
     print("which ffmpeg →", ffm)
-
-    # Buscar todos los ffmpeg posibles
     possible_paths = [
         "/usr/bin/ffmpeg",
         "/usr/local/bin/ffmpeg",
@@ -130,7 +124,6 @@ def debug_ffmpeg_locations():
         "/nix/var/nix/profiles/default/bin/ffmpeg",
         "/nix/store",
     ]
-
     for path in possible_paths:
         print(f"exists({path}) =", os.path.exists(path))
 
@@ -140,59 +133,52 @@ def is_url(string: str) -> bool:
     return string.startswith(("http://", "https://"))
 
 def find_ffmpeg():
-    """
-    Busca ffmpeg en rutas comunes de Railway/Nixpacks.
-    """
-    # 1. Si está en el PATH del contenedor
     ffmpeg_path = shutil.which("ffmpeg")
     if ffmpeg_path:
         return ffmpeg_path
-
-    # 2. Rutas típicas de Nixpacks
     fallback_paths = [
         "/usr/bin/ffmpeg",
         "/usr/local/bin/ffmpeg",
         "/nix/var/nix/profiles/default/bin/ffmpeg",
         "/bin/ffmpeg",
     ]
-
     for path in fallback_paths:
         if os.path.exists(path):
             return path
-
-    # 3. Si no existe, avisamos
     raise FileNotFoundError("FFmpeg no encontrado en Railway.")
 
 async def build_ffmpeg_source(url: str, channel: discord.TextChannel):
+    ydl_opts = {
+        "format": "bestaudio/best",
+        "quiet": True,
+        "no_warnings": True,
+        "default_search": "auto",
+    }
+
     try:
-        info = await asyncio.to_thread(lambda: ytdl.extract_info(url, download=False))
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            try:
+                info = ytdl.extract_info(url, download=False)
+                if info is None:
+                    await channel.send("❌ No pude obtener información del video. Puede estar bloqueado por YouTube.")
+                    return None
+            except Exception as e:
+                await channel.send(f"❌ Error al procesar YouTube:\n```{str(e)}```")
+                return None
+            direct_url = info["url"]
 
-        if not info:
-            await channel.send("❌ No pude obtener información del video. Puede requerir login de YouTube.")
-            return None
-
-        if "url" not in info:
-            await channel.send("❌ YouTube bloqueó el acceso al audio. Intenta con otro video.")
-            return None
-
-        direct_url = info["url"]
-
-        # Detectar ffmpeg
         ffmpeg_exec = find_ffmpeg()
         print(f"[DEBUG] Usando FFmpeg en: {ffmpeg_exec}")
 
         return discord.FFmpegOpusAudio(
-            source=direct_url,
+            direct_url,
             executable=ffmpeg_exec,
-            before_options="-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
+            before_options="-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
         )
 
     except Exception as e:
         logging.error(f"Error construyendo FFmpeg source: {e}")
-        await channel.send(f"❌ Error procesando la canción:\n```\n{e}\n```")
         return None
-
-
 
 # ----------------------------
 # DeepSeek IA
@@ -391,8 +377,14 @@ async def start_playback_if_needed(guild: discord.Guild):
         song = queue.dequeue()
         if not song: return
         try:
-            source = await build_ffmpeg_source(song.url)
-            vc.play(source, after=lambda err: asyncio.run_coroutine_threadsafe(start_playback_if_needed(guild), bot.loop) or (log.error(f"Playback error: {err}" if err else "")))
+            # ✅ ahora pasamos song.channel
+            source = await build_ffmpeg_source(song.url, song.channel)
+            vc.play(
+                source,
+                after=lambda err: asyncio.run_coroutine_threadsafe(
+                    start_playback_if_needed(guild), bot.loop
+                ) or (log.error(f"Playback error: {err}" if err else ""))
+            )
             current_song[guild.id] = song
             asyncio.create_task(send_now_playing_embed(song))
         except Exception:
