@@ -163,38 +163,33 @@ def find_ffmpeg():
     # 3. Si no existe, avisamos
     raise FileNotFoundError("FFmpeg no encontrado en Railway.")
 
-async def build_ffmpeg_source(url: str):
-    ydl_opts = {
-        "format": "bestaudio/best",
-        "quiet": True,
-        "no_warnings": True,
-        "default_search": "auto",
-    }
-
+async def build_ffmpeg_source(url: str, channel: discord.TextChannel):
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            try:
-                info = ytdl.extract_info(url, download=False)
-                if info is None:
-                    await channel.send("❌ No pude obtener información del video. Puede estar bloqueado por YouTube.")
-                    return None
-            except Exception as e:
-                await channel.send(f"❌ Error al procesar YouTube:\n```{str(e)}```")
-                return None
-            direct_url = info["url"]
+        info = await asyncio.to_thread(lambda: ytdl.extract_info(url, download=False))
 
-        # Detectar FFmpeg automáticamente
+        if not info:
+            await channel.send("❌ No pude obtener información del video. Puede requerir login de YouTube.")
+            return None
+
+        if "url" not in info:
+            await channel.send("❌ YouTube bloqueó el acceso al audio. Intenta con otro video.")
+            return None
+
+        direct_url = info["url"]
+
+        # Detectar ffmpeg
         ffmpeg_exec = find_ffmpeg()
         print(f"[DEBUG] Usando FFmpeg en: {ffmpeg_exec}")
 
         return discord.FFmpegOpusAudio(
-            direct_url,
-            executable="/nix/var/nix/profiles/default/bin/ffmpeg",
-            before_options="-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
+            source=direct_url,
+            executable=ffmpeg_exec,
+            before_options="-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
         )
 
     except Exception as e:
         logging.error(f"Error construyendo FFmpeg source: {e}")
+        await channel.send(f"❌ Error procesando la canción:\n```\n{e}\n```")
         return None
 
 
