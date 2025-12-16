@@ -23,9 +23,24 @@ from gtts import gTTS
 # Configuración
 # ----------------------------
 DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN")
-DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
-ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY")
-DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
+GEMMA_API_KEY = os.environ.get("GEMMA_API_KEY")
+
+GEMMA_API_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/models/"
+    "gen-lang-client-0806290005:generateContent"
+)
+
+MAX_TTS_CHARS = 180
+TTS_LANGUAGE = "es"
+
+SYSTEM_PROMPT = (
+    "Eres Kaivoxx, una asistente virtual estilo VTuber. "
+    "Eres amigable, expresiva, un poco sarcástica pero respetuosa. "
+    "Hablas en español latino, usas emojis con moderación 💜✨. "
+    "Respondes de forma clara y no demasiado larga. "
+    "Si te piden algo peligroso o ilegal, te niegas amablemente."
+)
+
 
 BOT_PREFIX = "#"
 MAX_QUEUE_LENGTH = 500
@@ -118,62 +133,115 @@ async def build_ffmpeg_source(video_url: str):
     return discord.FFmpegOpusAudio(direct_url, before_options=before_options)
 
 # ----------------------------
-# DeepSeek IA
+# Gemma IA (Google Generative Language)
 # ----------------------------
+GEMMA_API_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/models/"
+    "gen-lang-client-0806290005:generateContent"
+)
+
 def add_to_history(context_key: str, role: str, content: str, max_len: int = 10):
     history = conversation_history.setdefault(context_key, [])
+
+    if not history:
+        history.append({"role": "system", "content": SYSTEM_PROMPT})
+
     history.append({'role': role, 'content': content})
     conversation_history[context_key] = history[-max_len:]
 
-def deepseek_chat_response(context_key: str, user_prompt: str, model: str = "gpt-4o"):
-    add_to_history(context_key, 'user', user_prompt)
+
+
+def build_gemma_prompt(history: List[dict]) -> str:
+    prompt = f"{SYSTEM_PROMPT}\n\n"
+
+    for msg in history:
+        if msg["role"] == "user":
+            prompt += f"Usuario: {msg['content']}\n"
+        elif msg["role"] == "assistant":
+            prompt += f"Asistente: {msg['content']}\n"
+
+    prompt += "Asistente:"
+    return prompt
+
+
+
+def gemma_chat_response(context_key: str, user_prompt: str):
+    add_to_history(context_key, "user", user_prompt)
+
+    prompt_text = build_gemma_prompt(conversation_history[context_key])
+
     payload = {
-        "model": model,
-        "messages": conversation_history[context_key],
-        "max_tokens": 300,
-        "temperature": 0.6,
+        "contents": [
+            {
+                "parts": [{"text": prompt_text}]
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.6,
+            "maxOutputTokens": 300,
+            "topP": 0.9,
+            "topK": 40
+        }
     }
-    headers = {"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"}
+
     try:
-        resp = requests.post(DEEPSEEK_API_URL, json=payload, headers=headers, timeout=20)
-        resp.raise_for_status()
-        content = resp.json()['choices'][0]['message']['content']
-        add_to_history(context_key, 'assistant', content)
+        response = requests.post(
+            f"{GEMMA_API_URL}?key={GEMMA_API_KEY}",
+            json=payload,
+            timeout=20
+        )
+        response.raise_for_status()
+
+        data = response.json()
+        content = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+
+        add_to_history(context_key, "assistant", content)
         return content
-    except Exception as e:
-        log.exception("Error DeepSeek")
-        return "❌ Error al solicitar la IA."
+
+    except Exception:
+        log.exception("Error Gemma IA")
+        return "❌ Tuve un problema pensando… inténtalo otra vez 💜"
+
+
 
 # ----------------------------
-# TTS
+# TTS (Google gTTS usando texto de Gemma)
 # ----------------------------
 async def speak_text_in_voice(vc: discord.VoiceClient, text: str):
     if not vc or not vc.is_connected():
         return
 
+    if len(text) > MAX_TTS_CHARS:
+        return  # no leer textos largos
+
+    clean_text = text.replace("*", "").replace("_", "").replace("`", "")
+
     def _generate_audio():
-        try:
-            voice_id = "pNInz6obpgDQGcFmaJgB"
-            url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
-            headers = {"xi-api-key": ELEVENLABS_API_KEY,"Content-Type": "application/json"}
-            payload = {"text": text,"model_id": "eleven_multilingual_v2","voice_settings": {"stability":0.4,"similarity_boost":0.7}}
-            response = requests.post(url, headers=headers, json=payload)
-            response.raise_for_status()
-            return io.BytesIO(response.content)
-        except Exception as e:
-            log.warning(f"Fallo ElevenLabs: {e}, usando gTTS")
-            buf = io.BytesIO()
-            gTTS(text, lang=TTS_LANGUAGE).write_to_fp(buf)
-            buf.seek(0)
-            return buf
+        buf = io.BytesIO()
+        gTTS(
+            text=clean_text,
+            lang=TTS_LANGUAGE,
+            slow=False
+        ).write_to_fp(buf)
+        buf.seek(0)
+        return buf
 
     audio_buf = await asyncio.to_thread(_generate_audio)
+
     temp_path = f"tts_{vc.guild.id}.mp3"
-    with open(temp_path, "wb") as f: f.write(audio_buf.read())
+    with open(temp_path, "wb") as f:
+        f.write(audio_buf.read())
+
     source = discord.FFmpegPCMAudio(temp_path)
-    vc.play(source, after=lambda e: (os.remove(temp_path) if os.path.exists(temp_path) else None) or (log.error(f"TTS error: {e}" if e else "")))
+    vc.play(
+        source,
+        after=lambda e: os.remove(temp_path) if os.path.exists(temp_path) else None
+    )
+
     while vc.is_playing():
         await asyncio.sleep(0.1)
+
+
 
 # ----------------------------
 # Embeds neón
@@ -338,17 +406,53 @@ async def on_ready():
 
 @bot.event
 async def on_message(message: discord.Message):
-    if message.author.bot: return
-    if message.content.startswith(f"{BOT_PREFIX}ia") or bot.user.mentioned_in(message):
-        prompt = message.content.replace(f"{BOT_PREFIX}ia", "").replace(f"<@{bot.user.id}>", "").strip()
-        if not prompt: await message.channel.send("Dime qué quieres que responda.")
-        else:
-            await message.channel.trigger_typing()
-            response = await asyncio.to_thread(deepseek_chat_response, f"chan_{message.channel.id}", prompt)
-            await message.channel.send(response)
-            if message.guild.voice_client:
-                await speak_text_in_voice(message.guild.voice_client, response)
+    if message.author.bot:
+        return
+
+    is_ia = message.content.startswith(f"{BOT_PREFIX}ia")
+    is_habla = message.content.startswith(f"{BOT_PREFIX}habla")
+    is_mention = bot.user.mentioned_in(message)
+
+    if is_ia or is_habla or is_mention:
+        prompt = (
+            message.content
+            .replace(f"{BOT_PREFIX}ia", "")
+            .replace(f"{BOT_PREFIX}habla", "")
+            .replace(f"<@{bot.user.id}>", "")
+            .strip()
+        )
+
+        if not prompt:
+            await message.channel.send("💜 Dime qué quieres que responda.")
+            return
+
+        await message.channel.trigger_typing()
+
+        response = await asyncio.to_thread(
+            gemma_chat_response,
+            f"chan_{message.channel.id}",
+            prompt
+        )
+
+        await message.channel.send(response)
+
+        # 🔊 SOLO HABLA SI:
+        # - Usaron #habla
+        # - Está en un canal de voz
+        # - El texto no es muy largo
+        if (
+            is_habla
+            and message.guild
+            and message.guild.voice_client
+            and len(response) <= MAX_TTS_CHARS
+        ):
+            await speak_text_in_voice(
+                message.guild.voice_client,
+                response
+            )
+
     await bot.process_commands(message)
+
 
 # ----------------------------
 # Comandos
@@ -464,6 +568,90 @@ async def cmd_now(ctx):
         await ctx.send(embed=embed_music("Ahora reproduciendo", f"🎧 **[{song.title}]({song.url})**\n💜 Pedido por {song.requester_name}"))
     else:
         await ctx.send(embed=embed_info("Nada reproduciéndose", "No hay música sonando actualmente."))
+
+# ----------------------------
+# Comandos Bot IA
+# ----------------------------        
+
+@bot.command(name="ia")
+async def cmd_ia(ctx, *, prompt: str = None):
+    if not prompt:
+        await ctx.send("💜 Escríbeme algo para pensar ✨")
+        return
+
+    await ctx.trigger_typing()
+
+    response = await asyncio.to_thread(
+        gemma_chat_response,
+        f"chan_{ctx.channel.id}",
+        prompt
+    )
+
+    await ctx.send(response)
+
+
+@bot.command(name="habla")
+async def cmd_habla(ctx, *, prompt: str = None):
+    if not prompt:
+        await ctx.send("💜 ¿Qué quieres que diga? 🎤")
+        return
+
+    await ctx.trigger_typing()
+
+    response = await asyncio.to_thread(
+        gemma_chat_response,
+        f"chan_{ctx.channel.id}",
+        prompt
+    )
+
+    await ctx.send(response)
+
+    if ctx.voice_client and len(response) <= MAX_TTS_CHARS:
+        await speak_text_in_voice(ctx.voice_client, response)
+
+
+@bot.command(name="limpiar_ia")
+async def cmd_limpiar_ia(ctx):
+    key = f"chan_{ctx.channel.id}"
+
+    if key in conversation_history:
+        del conversation_history[key]
+        await ctx.send("🧠 Memoria limpiada. Empezamos de cero 💜✨")
+    else:
+        await ctx.send("ℹ️ No había memoria previa en este canal.")
+
+
+@bot.command(name="personalidad")
+async def cmd_personalidad(ctx):
+    await ctx.send(
+        embed=embed_info(
+            "¿Quién es Kaivoxx?",
+            SYSTEM_PROMPT
+        )
+    )
+
+
+@bot.command(name="resumen")
+async def cmd_resumen(ctx, *, texto: str = None):
+    if not texto:
+        await ctx.send("✂️ Dame un texto para resumir.")
+        return
+
+    prompt = f"Resume el siguiente texto de forma clara y corta:\n\n{texto}"
+
+    await ctx.trigger_typing()
+
+    response = await asyncio.to_thread(
+        gemma_chat_response,
+        f"temp_resumen_{ctx.message.id}",
+        prompt
+    )
+
+    # limpiar memoria temporal
+    conversation_history.pop(f"temp_resumen_{ctx.message.id}", None)
+
+    await ctx.send(f"📌 **Resumen:**\n{response}")
+
 
 # ----------------------------
 # Run bot
