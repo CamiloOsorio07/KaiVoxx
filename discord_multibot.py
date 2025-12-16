@@ -24,7 +24,7 @@ from gtts import gTTS
 # Configuración
 # ----------------------------
 DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN")
-GEMMA_API_KEY = os.environ.get("GEMMA_API_KEY")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
@@ -39,14 +39,6 @@ SYSTEM_PROMPT = (
     "Respondes de forma clara y no demasiado larga. "
     "Si te piden algo peligroso o ilegal, te niegas amablemente."
 )
-
-# Limitar concurrencia de llamadas a Gemma
-GEMMA_CONCURRENCY_LIMIT = 3
-gemma_semaphore = asyncio.Semaphore(GEMMA_CONCURRENCY_LIMIT)
-
-# Cooldown simple por canal (en segundos)
-gemma_channel_cooldown = {}
-GEMMA_CHANNEL_MIN_INTERVAL = 1.0  # ajusta según necesites
 
 
 BOT_PREFIX = "#"
@@ -432,7 +424,7 @@ async def on_message(message: discord.Message):
         # 👇 ESTA ES LA FORMA CORRECTA
         async with message.channel.typing():
             response = await asyncio.to_thread(
-                gemma_chat_response,
+                groq_chat_response,
                 f"chan_{message.channel.id}",
                 prompt
             )
@@ -580,7 +572,7 @@ async def cmd_now(ctx):
 async def cmd_ia(ctx, *, prompt: str):
     async with ctx.typing():
         response = await asyncio.to_thread(
-            gemma_chat_response,
+            groq_chat_response,
             f"chan_{ctx.channel.id}",
             prompt
         )
@@ -596,7 +588,7 @@ async def cmd_habla(ctx, *, prompt: str = None):
 
     async with ctx.typing():
         response = await asyncio.to_thread(
-            gemma_chat_response,
+            groq_chat_response,
             f"chan_{ctx.channel.id}",
             prompt
         )
@@ -638,7 +630,7 @@ async def cmd_resumen(ctx, *, texto: str = None):
 
     async with ctx.typing():
         response = await asyncio.to_thread(
-            gemma_chat_response,
+            groq_chat_response,
             f"temp_resumen_{ctx.message.id}",
             prompt
         )
