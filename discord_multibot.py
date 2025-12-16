@@ -3,6 +3,7 @@
 # ============================================================
 
 import os
+import random
 import asyncio
 import io
 import logging
@@ -40,6 +41,14 @@ SYSTEM_PROMPT = (
     "Respondes de forma clara y no demasiado larga. "
     "Si te piden algo peligroso o ilegal, te niegas amablemente."
 )
+
+# Limitar concurrencia de llamadas a Gemma
+GEMMA_CONCURRENCY_LIMIT = 3
+gemma_semaphore = asyncio.Semaphore(GEMMA_CONCURRENCY_LIMIT)
+
+# Cooldown simple por canal (en segundos)
+gemma_channel_cooldown = {}
+GEMMA_CHANNEL_MIN_INTERVAL = 1.0  # ajusta según necesites
 
 
 BOT_PREFIX = "#"
@@ -161,10 +170,12 @@ def build_gemma_prompt(history: List[dict]) -> str:
 
 
 def gemma_chat_response(context_key: str, user_prompt: str):
+    """
+    Versión robusta con retries y backoff. Esta función se llama con asyncio.to_thread(...)
+    """
     add_to_history(context_key, "user", user_prompt)
 
     prompt_text = build_gemma_prompt(conversation_history[context_key])
-
     payload = {
         "contents": [
             {
@@ -179,23 +190,45 @@ def gemma_chat_response(context_key: str, user_prompt: str):
         }
     }
 
-    try:
-        response = requests.post(
-            f"{GEMMA_API_URL}?key={GEMMA_API_KEY}",
-            json=payload,
-            timeout=20
-        )
-        response.raise_for_status()
+    url = f"{GEMMA_API_URL}?key={GEMMA_API_KEY}"
+    max_retries = 5
+    backoff = 1.0
 
-        data = response.json()
-        content = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = requests.post(url, json=payload, timeout=20)
+            # Manejar 429 explícitamente
+            if response.status_code == 429:
+                retry_after = response.headers.get("Retry-After")
+                try:
+                    wait = float(retry_after)
+                except Exception:
+                    wait = backoff + random.random()
+                log.warning(f"Gemma 429 (attempt {attempt}/{max_retries}). Esperando {wait:.1f}s antes de reintentar.")
+                time.sleep(wait)
+                backoff *= 2
+                continue
 
-        add_to_history(context_key, "assistant", content)
-        return content
+            response.raise_for_status()
 
-    except Exception:
-        log.exception("Error Gemma IA")
-        return "❌ Tuve un problema pensando… inténtalo otra vez 💜"
+            data = response.json()
+            content = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+            add_to_history(context_key, "assistant", content)
+            return content
+
+        except requests.exceptions.RequestException as exc:
+            # último intento -> devolver mensaje amigable
+            if attempt == max_retries:
+                log.exception("Error Gemma IA (último intento fallido)")
+                return "❌ Tuve un problema pensando… inténtalo otra vez 💜"
+            # esperar con backoff + jitter
+            wait = backoff + random.random()
+            log.warning(f"Error petición Gemma (attempt {attempt}). Esperando {wait:.1f}s. Error: {exc}")
+            time.sleep(wait)
+            backoff *= 2
+
+    # fallback (no debería llegar aquí)
+    return "❌ Tuve un problema pensando… inténtalo otra vez 💜"
 
 
 
