@@ -28,7 +28,7 @@ ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY")
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 
 BOT_PREFIX = "#"
-MAX_QUEUE_LENGTH = 200
+MAX_QUEUE_LENGTH = 500
 TTS_LANGUAGE = "es"
 
 # ----------------------------
@@ -402,14 +402,14 @@ async def cmd_play(ctx, *, search: str):
 
     if isinstance(info, dict) and 'entries' in info and info['entries']:
         for count, entry in enumerate(info['entries']):
-            if count >= 50: break
+            if count >= 200: break
             url = entry.get('webpage_url') or entry.get('url')
             title = entry.get('title', 'Unknown title')
             if queue.enqueue(Song(url, title, str(ctx.author), ctx.channel)):
                 songs_added += 1
         await ctx.send(embed=embed_music(
             "Playlist / Mix añadido",
-            f"🎶 Se añadieron **{songs_added} canciones** (máximo 50).\n📂 Cola actual: **{len(queue)}** / {queue.limit}"
+            f"🎶 Se añadieron **{songs_added} canciones** (máximo 200).\n📂 Cola actual: **{len(queue)}** / {queue.limit}"
         ))
     else:
         url = info.get('webpage_url') or info.get('url')
