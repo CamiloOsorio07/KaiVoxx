@@ -135,11 +135,6 @@ async def build_ffmpeg_source(video_url: str):
 # ----------------------------
 # Gemma IA (Google Generative Language)
 # ----------------------------
-GEMMA_API_URL = (
-    "https://generativelanguage.googleapis.com/v1beta/models/"
-    "gen-lang-client-0806290005:generateContent"
-)
-
 def add_to_history(context_key: str, role: str, content: str, max_len: int = 10):
     history = conversation_history.setdefault(context_key, [])
 
@@ -574,20 +569,20 @@ async def cmd_now(ctx):
 # ----------------------------        
 
 @bot.command(name="ia")
-async def cmd_ia(ctx, *, prompt: str = None):
-    if not prompt:
-        await ctx.send("💜 Escríbeme algo para pensar ✨")
-        return
-
-    await ctx.trigger_typing()
-
-    response = await asyncio.to_thread(
-        gemma_chat_response,
-        f"chan_{ctx.channel.id}",
-        prompt
-    )
+async def cmd_ia(ctx, *, prompt: str):
+    async with ctx.typing():
+        response = await asyncio.to_thread(
+            gemma_chat_response,
+            f"chan_{ctx.channel.id}",
+            prompt
+        )
 
     await ctx.send(response)
+
+        except Exception as e:
+            await ctx.send("❌ Error al consultar la IA")
+            logger.exception(e)
+
 
 
 @bot.command(name="habla")
@@ -596,13 +591,12 @@ async def cmd_habla(ctx, *, prompt: str = None):
         await ctx.send("💜 ¿Qué quieres que diga? 🎤")
         return
 
-    await ctx.trigger_typing()
-
-    response = await asyncio.to_thread(
-        gemma_chat_response,
-        f"chan_{ctx.channel.id}",
-        prompt
-    )
+    async with ctx.typing():
+        response = await asyncio.to_thread(
+            gemma_chat_response,
+            f"chan_{ctx.channel.id}",
+            prompt
+        )
 
     await ctx.send(response)
 
@@ -639,18 +633,17 @@ async def cmd_resumen(ctx, *, texto: str = None):
 
     prompt = f"Resume el siguiente texto de forma clara y corta:\n\n{texto}"
 
-    await ctx.trigger_typing()
+    async with ctx.typing():
+        response = await asyncio.to_thread(
+            gemma_chat_response,
+            f"temp_resumen_{ctx.message.id}",
+            prompt
+        )
 
-    response = await asyncio.to_thread(
-        gemma_chat_response,
-        f"temp_resumen_{ctx.message.id}",
-        prompt
-    )
-
-    # limpiar memoria temporal
     conversation_history.pop(f"temp_resumen_{ctx.message.id}", None)
 
     await ctx.send(f"📌 **Resumen:**\n{response}")
+
 
 
 # ----------------------------
