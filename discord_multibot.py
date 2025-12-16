@@ -426,18 +426,20 @@ async def on_message(message: discord.Message):
             await message.channel.send("💜 Dime qué quieres que responda.")
             return
 
-        # ✅ Forma segura (NO falla en Railway)
-        await message.channel.send_typing()
-
-        response = await asyncio.to_thread(
-            gemma_chat_response,
-            f"chan_{message.channel.id}",
-            prompt
-        )
+        # 👇 ESTA ES LA FORMA CORRECTA
+        async with message.channel.typing():
+            response = await asyncio.to_thread(
+                gemma_chat_response,
+                f"chan_{message.channel.id}",
+                prompt
+            )
 
         await message.channel.send(response)
 
         # 🔊 SOLO HABLA SI:
+        # - Usaron #habla
+        # - Está en un canal de voz
+        # - El texto no es muy largo
         if (
             is_habla
             and message.guild
