@@ -579,11 +579,6 @@ async def cmd_ia(ctx, *, prompt: str):
 
     await ctx.send(response)
 
-        except Exception as e:
-            await ctx.send("❌ Error al consultar la IA")
-            logger.exception(e)
-
-
 
 @bot.command(name="habla")
 async def cmd_habla(ctx, *, prompt: str = None):
