@@ -27,7 +27,7 @@ GEMMA_API_KEY = os.environ.get("GEMMA_API_KEY")
 
 GEMMA_API_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
-    "gen-lang-client-0806290005:generateContent"
+    "gemini-2.0-flash:generateContent"
 )
 
 MAX_TTS_CHARS = 180
