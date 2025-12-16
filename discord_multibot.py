@@ -26,10 +26,8 @@ from gtts import gTTS
 DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN")
 GEMMA_API_KEY = os.environ.get("GEMMA_API_KEY")
 
-GEMMA_API_URL = (
-    "https://generativelanguage.googleapis.com/v1beta/models/"
-    "gemini-2.0-flash:generateContent"
-)
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+
 
 MAX_TTS_CHARS = 180
 TTS_LANGUAGE = "es"
@@ -169,66 +167,43 @@ def build_gemma_prompt(history: List[dict]) -> str:
 
 
 
-def gemma_chat_response(context_key: str, user_prompt: str):
-    """
-    Versión robusta con retries y backoff. Esta función se llama con asyncio.to_thread(...)
-    """
+def groq_chat_response(context_key: str, user_prompt: str):
     add_to_history(context_key, "user", user_prompt)
 
-    prompt_text = build_gemma_prompt(conversation_history[context_key])
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    for msg in conversation_history.get(context_key, []):
+        if msg["role"] in ("user", "assistant"):
+            messages.append(msg)
+
     payload = {
-        "contents": [
-            {
-                "parts": [{"text": prompt_text}]
-            }
-        ],
-        "generationConfig": {
-            "temperature": 0.6,
-            "maxOutputTokens": 300,
-            "topP": 0.9,
-            "topK": 40
-        }
+        "model": "llama-3.1-8b-instant",
+        "messages": messages,
+        "temperature": 0.6,
+        "max_tokens": 300
     }
 
-    url = f"{GEMMA_API_URL}?key={GEMMA_API_KEY}"
-    max_retries = 5
-    backoff = 1.0
+    headers = {
+        "Authorization": f"Bearer {os.environ.get('GROQ_API_KEY')}",
+        "Content-Type": "application/json"
+    }
 
-    for attempt in range(1, max_retries + 1):
-        try:
-            response = requests.post(url, json=payload, timeout=20)
-            # Manejar 429 explícitamente
-            if response.status_code == 429:
-                retry_after = response.headers.get("Retry-After")
-                try:
-                    wait = float(retry_after)
-                except Exception:
-                    wait = backoff + random.random()
-                log.warning(f"Gemma 429 (attempt {attempt}/{max_retries}). Esperando {wait:.1f}s antes de reintentar.")
-                time.sleep(wait)
-                backoff *= 2
-                continue
+    try:
+        response = requests.post(
+            GROQ_API_URL,
+            headers=headers,
+            json=payload,
+            timeout=20
+        )
+        response.raise_for_status()
 
-            response.raise_for_status()
+        content = response.json()["choices"][0]["message"]["content"].strip()
+        add_to_history(context_key, "assistant", content)
+        return content
 
-            data = response.json()
-            content = data["candidates"][0]["content"]["parts"][0]["text"].strip()
-            add_to_history(context_key, "assistant", content)
-            return content
+    except Exception:
+        log.exception("Error Groq IA")
+        return "❌ Tuve un problema pensando… inténtalo otra vez 💜"
 
-        except requests.exceptions.RequestException as exc:
-            # último intento -> devolver mensaje amigable
-            if attempt == max_retries:
-                log.exception("Error Gemma IA (último intento fallido)")
-                return "❌ Tuve un problema pensando… inténtalo otra vez 💜"
-            # esperar con backoff + jitter
-            wait = backoff + random.random()
-            log.warning(f"Error petición Gemma (attempt {attempt}). Esperando {wait:.1f}s. Error: {exc}")
-            time.sleep(wait)
-            backoff *= 2
-
-    # fallback (no debería llegar aquí)
-    return "❌ Tuve un problema pensando… inténtalo otra vez 💜"
 
 
 
