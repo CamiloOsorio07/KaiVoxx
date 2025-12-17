@@ -244,7 +244,7 @@ async def speak_text_in_voice(vc: discord.VoiceClient, text: str):
             except Exception:
                 log.exception("No se pudo detener la reproducción previa")
 
-        source = discord.FFmpegPCMAudio(temp_path)
+        source = discord.FFmpegOpusAudio(temp_path)
         vc.play(
             source,
             after=lambda e: (
