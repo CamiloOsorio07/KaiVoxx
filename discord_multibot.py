@@ -58,7 +58,11 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 intents.voice_states = True
-bot = commands.Bot(command_prefix=BOT_PREFIX, intents=intents)
+bot = commands.Bot(
+    command_prefix=BOT_PREFIX,
+    intents=intents,
+    help_command=None  # desactiva help por defecto
+)
 
 # ----------------------------
 # Data structures
@@ -643,12 +647,6 @@ async def cmd_now(ctx):
     else:
         await ctx.send(embed=embed_info("Nada reproduciéndose", "No hay música sonando actualmente."))
 
-
-bot = commands.Bot(
-    command_prefix=BOT_PREFIX,
-    intents=intents,
-    help_command=None  # ⬅️ desactiva el help por defecto
-)
 
 @bot.command(name="help")
 async def cmd_help(ctx):
