@@ -633,6 +633,55 @@ async def cmd_now(ctx):
     else:
         await ctx.send(embed=embed_info("Nada reproduciéndose", "No hay música sonando actualmente."))
 
+@bot.command(name="help")
+async def cmd_help(ctx):
+    embed = discord.Embed(
+        title="💜 Ayuda — Comandos de Kaivoxx",
+        description="Soy tu asistente musical 🎵 y de IA 🤖\nUsa los comandos con el prefijo `#`",
+        color=0x9B59B6
+    )
+
+    # 🎵 Música
+    embed.add_field(
+        name="🎵 Música",
+        value=(
+            "`#join` → Me uno a tu canal de voz\n"
+            "`#leave` → Salgo del canal de voz\n"
+            "`#play <nombre o link>` → Reproduce música o playlists de YouTube\n"
+            "`#skip` → Salta la canción actual\n"
+            "`#stop` → Detiene la música y limpia la cola\n"
+            "`#queue` → Muestra la cola de canciones\n"
+            "`#now` → Muestra la canción que está sonando"
+        ),
+        inline=False
+    )
+
+    # 🤖 Inteligencia Artificial
+    embed.add_field(
+        name="🤖 IA",
+        value=(
+            "`#ia <mensaje>` → Hablo contigo por texto usando IA\n"
+            "`#habla <mensaje>` → Respondo con IA **y hablo por voz** 🎤\n"
+            "`#limpiar_ia` → Borra la memoria de la conversación\n"
+            "`#resumen <texto>` → Resume un texto largo\n"
+            "`#personalidad` → Muestra mi personalidad"
+        ),
+        inline=False
+    )
+
+    # ℹ️ Extra
+    embed.add_field(
+        name="ℹ️ Información",
+        value=(
+            "También puedes **mencionarme** para hablar conmigo 💬\n"
+            "Ejemplo: `@Kaivoxx hola`"
+        ),
+        inline=False
+    )
+
+    embed.set_footer(text="💜 Kaivoxx | Asistente musical y de IA")
+    await ctx.send(embed=embed)
+
 # ----------------------------
 # Comandos Bot IA
 # ----------------------------        
