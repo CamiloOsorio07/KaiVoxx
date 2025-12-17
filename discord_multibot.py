@@ -496,6 +496,7 @@ async def on_message(message: discord.Message):
                     if not ok:
                         await message.channel.send("⚠️ No pude reproducir la voz. Comprueba permisos y que ffmpeg esté disponible.")
 
+  await bot.process_commands(message)
 
 
 # ----------------------------
