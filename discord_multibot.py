@@ -633,6 +633,13 @@ async def cmd_now(ctx):
     else:
         await ctx.send(embed=embed_info("Nada reproduciéndose", "No hay música sonando actualmente."))
 
+
+bot = commands.Bot(
+    command_prefix=BOT_PREFIX,
+    intents=intents,
+    help_command=None  # ⬅️ desactiva el help por defecto
+)
+
 @bot.command(name="help")
 async def cmd_help(ctx):
     embed = discord.Embed(
