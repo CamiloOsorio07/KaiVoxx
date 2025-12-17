@@ -438,7 +438,7 @@ async def on_message(message: discord.Message):
 
     is_ia = message.content.startswith(f"{BOT_PREFIX}ia")
     is_habla = message.content.startswith(f"{BOT_PREFIX}habla")
-    is_mention = bot.user.mentioned_in(message)
+    is_mention = bot.user and bot.user.mentioned_in(message)
 
     if is_ia or is_habla or is_mention:
         prompt = (
@@ -446,14 +446,16 @@ async def on_message(message: discord.Message):
             .replace(f"{BOT_PREFIX}ia", "")
             .replace(f"{BOT_PREFIX}habla", "")
             .replace(f"<@{bot.user.id}>", "")
+            .replace(f"<@!{bot.user.id}>", "")
             .strip()
         )
 
         if not prompt:
             await message.channel.send("💜 Dime qué quieres que responda.")
+            await bot.process_commands(message)
             return
 
-                # 👇 ESTA ES LA FORMA CORRECTA
+        # 🧠 Respuesta IA
         async with message.channel.typing():
             response = await asyncio.to_thread(
                 groq_chat_response,
@@ -463,40 +465,57 @@ async def on_message(message: discord.Message):
 
         await message.channel.send(response)
 
-        # 🔊 SOLO HABLA SI:
-        # - Usaron #habla
-        # - El autor está en un canal de voz y el bot puede unirse (o ya está)
-        # - El texto no es muy largo
+        # 🔊 TTS SOLO si usan #habla
         if is_habla and message.guild and len(response) <= MAX_TTS_CHARS:
             author_voice = message.author.voice
             vc = message.guild.voice_client
 
-            # Si el autor no está en voz -> avisar
+            # Usuario no está en voz
             if not author_voice or not author_voice.channel:
-                await message.channel.send("💜 Para que hable, debes estar en un canal de voz y usar `#habla` desde ahí.")
+                await message.channel.send(
+                    "💜 Para que hable, debes estar en un canal de voz y usar `#habla` desde ahí."
+                )
             else:
                 user_channel = author_voice.channel
 
-                # Si bot no está conectado, intentar conectar al canal del autor
+                # Conectar si no está conectado
                 if not vc:
                     try:
                         vc = await user_channel.connect()
-                        await message.channel.send(embed=embed_success("Conectada al canal", f"Me uní a **{user_channel.name}** para hablar 🎤"))
-                    except Exception as e:
+                        await message.channel.send(
+                            embed=embed_success(
+                                "Conectada al canal",
+                                f"Me uní a **{user_channel.name}** para hablar 🎤"
+                            )
+                        )
+                    except Exception:
                         log.exception("No pude unirme al canal de voz")
-                        await message.channel.send(embed=embed_warning("No pude unirme", "No tengo permisos para unirme al canal de voz o ocurrió un error."))
-                        vc = None
+                        await message.channel.send(
+                            embed=embed_warning(
+                                "No pude unirme",
+                                "No tengo permisos para unirme al canal de voz o ocurrió un error."
+                            )
+                        )
+                        await bot.process_commands(message)
+                        return
 
-                # Si el bot está en otro canal distinto -> avisar
-                if vc and vc.channel.id != user_channel.id:
-                    await message.channel.send(embed=embed_warning("Ya estoy en otro canal", "Estoy en otro canal de voz. Pide que me unan al mismo canal o usa #join."))
-                elif vc:
-                    # Finalmente, reproducir la TTS
+                # Bot está en otro canal
+                if vc.channel.id != user_channel.id:
+                    await message.channel.send(
+                        embed=embed_warning(
+                            "Ya estoy en otro canal",
+                            "Estoy en otro canal de voz. Pide que me unan al mismo canal o usa `#join`."
+                        )
+                    )
+                else:
                     ok = await speak_text_in_voice(vc, response)
                     if not ok:
-                        await message.channel.send("⚠️ No pude reproducir la voz. Comprueba permisos y que ffmpeg esté disponible.")
+                        await message.channel.send(
+                            "⚠️ No pude reproducir la voz. Comprueba permisos y que ffmpeg esté disponible."
+                        )
 
-  await bot.process_commands(message)
+    # 🔥 ESTO ES OBLIGATORIO SI USAS on_message
+    await bot.process_commands(message)
 
 
 # ----------------------------
@@ -509,7 +528,7 @@ async def cmd_join(ctx):
         if ctx.voice_client and ctx.voice_client.channel.id == channel.id:
             await ctx.send(embed=embed_info("Ya estoy aquí", f"Ya estoy conectada en **{channel.name}** ✨"))
             return
-        await channel.connect()
+        vc = await channel.connect()
         await ctx.send(embed=embed_success("Conectada al canal", f"Me uní a **{channel.name}** 🎧"))
     else:
         await ctx.send(embed=embed_warning("No estás en un canal", "Debes unirte primero a un canal de voz."))
@@ -541,7 +560,7 @@ async def cmd_play(ctx, *, search: str):
 
     # Conectar al canal si el bot aún no está
     if not ctx.voice_client:
-        await ctx.author.voice.channel.connect()
+        vc = await ctx.author.voice.channel.connect()
 
     queue = await ensure_queue_for_guild(ctx.guild.id)
     await ctx.send(embed=embed_info("Buscando en YouTube…", f"🔍 **{search}**"))
