@@ -480,8 +480,7 @@ async def on_message(message: discord.Message):
                 # Si bot no está conectado, intentar conectar al canal del autor
                 if not vc:
                     try:
-                        await user_channel.connect()
-                        vc = message.guild.voice_client
+                        vc = await user_channel.connect()
                         await message.channel.send(embed=embed_success("Conectada al canal", f"Me uní a **{user_channel.name}** para hablar 🎤"))
                     except Exception as e:
                         log.exception("No pude unirme al canal de voz")
@@ -660,8 +659,7 @@ async def cmd_habla(ctx, *, prompt: str = None):
     # Si el bot no está conectado, intentar unirse
     if not vc:
         try:
-            await user_channel.connect()
-            vc = ctx.voice_client
+            vc = await user_channel.connect()
             await ctx.send(embed=embed_success("Conectada al canal", f"Me uní a **{user_channel.name}** para hablar 🎤"))
         except Exception:
             log.exception("No pude unirme al canal desde cmd_habla")
