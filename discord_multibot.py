@@ -203,38 +203,70 @@ def groq_chat_response(context_key: str, user_prompt: str):
 # TTS (Google gTTS usando texto de Gemma)
 # ----------------------------
 async def speak_text_in_voice(vc: discord.VoiceClient, text: str):
+    """
+    Reproduce `text` por el VoiceClient `vc`. Espera a que termine la reproducción.
+    """
     if not vc or not vc.is_connected():
-        return
+        log.warning("speak_text_in_voice: VoiceClient no conectado")
+        return False
 
     if len(text) > MAX_TTS_CHARS:
-        return  # no leer textos largos
+        log.info("Texto demasiado largo para TTS, no se leerá por voz.")
+        return False  # no leer textos largos
 
     clean_text = text.replace("*", "").replace("_", "").replace("`", "")
 
     def _generate_audio():
         buf = io.BytesIO()
-        gTTS(
-            text=clean_text,
-            lang=TTS_LANGUAGE,
-            slow=False
-        ).write_to_fp(buf)
-        buf.seek(0)
-        return buf
+        try:
+            gTTS(text=clean_text, lang=TTS_LANGUAGE, slow=False).write_to_fp(buf)
+            buf.seek(0)
+            return buf
+        except Exception as e:
+            log.exception("Error generando TTS")
+            raise
 
-    audio_buf = await asyncio.to_thread(_generate_audio)
+    try:
+        audio_buf = await asyncio.to_thread(_generate_audio)
+    except Exception:
+        return False
 
     temp_path = f"tts_{vc.guild.id}.mp3"
-    with open(temp_path, "wb") as f:
-        f.write(audio_buf.read())
+    try:
+        with open(temp_path, "wb") as f:
+            f.write(audio_buf.read())
 
-    source = discord.FFmpegPCMAudio(temp_path)
-    vc.play(
-        source,
-        after=lambda e: os.remove(temp_path) if os.path.exists(temp_path) else None
-    )
+        # Si hay algo reproduciéndose ya en el VC, lo esperamos a que termine o hacemos stop según prefieras.
+        # Aquí hacemos stop para forzar que nuestra TTS suene inmediatamente:
+        if vc.is_playing():
+            try:
+                vc.stop()
+            except Exception:
+                log.exception("No se pudo detener la reproducción previa")
 
-    while vc.is_playing():
-        await asyncio.sleep(0.1)
+        source = discord.FFmpegPCMAudio(temp_path)
+        vc.play(
+            source,
+            after=lambda e: (
+                log.exception(f"TTS playback error: {e}") if e else None,
+                os.remove(temp_path) if os.path.exists(temp_path) else None
+            )
+        )
+
+        # Esperar a que termine la reproducción
+        while vc.is_playing() or vc.is_paused():
+            await asyncio.sleep(0.1)
+
+        return True
+    except Exception:
+        log.exception("Error reproduciendo TTS")
+        # intentar limpiar archivo temporal si existe
+        try:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+        except Exception:
+            pass
+        return False
 
 
 
@@ -421,7 +453,7 @@ async def on_message(message: discord.Message):
             await message.channel.send("💜 Dime qué quieres que responda.")
             return
 
-        # 👇 ESTA ES LA FORMA CORRECTA
+                # 👇 ESTA ES LA FORMA CORRECTA
         async with message.channel.typing():
             response = await asyncio.to_thread(
                 groq_chat_response,
@@ -433,20 +465,38 @@ async def on_message(message: discord.Message):
 
         # 🔊 SOLO HABLA SI:
         # - Usaron #habla
-        # - Está en un canal de voz
+        # - El autor está en un canal de voz y el bot puede unirse (o ya está)
         # - El texto no es muy largo
-        if (
-            is_habla
-            and message.guild
-            and message.guild.voice_client
-            and len(response) <= MAX_TTS_CHARS
-        ):
-            await speak_text_in_voice(
-                message.guild.voice_client,
-                response
-            )
+        if is_habla and message.guild and len(response) <= MAX_TTS_CHARS:
+            author_voice = message.author.voice
+            vc = message.guild.voice_client
 
-    await bot.process_commands(message)
+            # Si el autor no está en voz -> avisar
+            if not author_voice or not author_voice.channel:
+                await message.channel.send("💜 Para que hable, debes estar en un canal de voz y usar `#habla` desde ahí.")
+            else:
+                user_channel = author_voice.channel
+
+                # Si bot no está conectado, intentar conectar al canal del autor
+                if not vc:
+                    try:
+                        await user_channel.connect()
+                        vc = message.guild.voice_client
+                        await message.channel.send(embed=embed_success("Conectada al canal", f"Me uní a **{user_channel.name}** para hablar 🎤"))
+                    except Exception as e:
+                        log.exception("No pude unirme al canal de voz")
+                        await message.channel.send(embed=embed_warning("No pude unirme", "No tengo permisos para unirme al canal de voz o ocurrió un error."))
+                        vc = None
+
+                # Si el bot está en otro canal distinto -> avisar
+                if vc and vc.channel.id != user_channel.id:
+                    await message.channel.send(embed=embed_warning("Ya estoy en otro canal", "Estoy en otro canal de voz. Pide que me unan al mismo canal o usa #join."))
+                elif vc:
+                    # Finalmente, reproducir la TTS
+                    ok = await speak_text_in_voice(vc, response)
+                    if not ok:
+                        await message.channel.send("⚠️ No pude reproducir la voz. Comprueba permisos y que ffmpeg esté disponible.")
+
 
 
 # ----------------------------
@@ -595,8 +645,38 @@ async def cmd_habla(ctx, *, prompt: str = None):
 
     await ctx.send(response)
 
-    if ctx.voice_client and len(response) <= MAX_TTS_CHARS:
-        await speak_text_in_voice(ctx.voice_client, response)
+    # Intentar hablar en voz:
+    if len(response) > MAX_TTS_CHARS:
+        await ctx.send("⚠️ La respuesta es muy larga para leerla en voz. Acorta el mensaje o usa #ia para solo texto.")
+        return
+
+    if not ctx.author.voice or not ctx.author.voice.channel:
+        await ctx.send("💜 Para que hable necesito que estés en un canal de voz. Únete y usa `#habla` ahí.")
+        return
+
+    user_channel = ctx.author.voice.channel
+    vc = ctx.voice_client
+
+    # Si el bot no está conectado, intentar unirse
+    if not vc:
+        try:
+            await user_channel.connect()
+            vc = ctx.voice_client
+            await ctx.send(embed=embed_success("Conectada al canal", f"Me uní a **{user_channel.name}** para hablar 🎤"))
+        except Exception:
+            log.exception("No pude unirme al canal desde cmd_habla")
+            await ctx.send(embed=embed_warning("No pude unirme", "No tengo permisos para unirme al canal de voz o ocurrió un error."))
+            return
+
+    # Si el bot está en otro canal distinto -> avisar y no hablar
+    if vc and vc.channel.id != user_channel.id:
+        await ctx.send(embed=embed_warning("Ya estoy en otro canal", "Estoy en otro canal de voz. Pide que me unan al mismo canal o usa #join."))
+        return
+
+    # Reproducir TTS
+    ok = await speak_text_in_voice(vc, response)
+    if not ok:
+        await ctx.send("⚠️ No pude reproducir la voz. Comprueba permisos y que ffmpeg esté disponible.")
 
 
 @bot.command(name="limpiar_ia")
