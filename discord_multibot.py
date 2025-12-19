@@ -1,5 +1,6 @@
 # ============================================================
 # discord_multibot.py  (Versión completa + Railway ready)
+#  - Actualizado: paginación para el comando #queue (50 canciones por página)
 # ============================================================
 
 import os
@@ -199,7 +200,6 @@ def groq_chat_response(context_key: str, user_prompt: str):
     except Exception:
         log.exception("Error Groq IA")
         return "❌ Tuve un problema pensando… inténtalo otra vez 💜"
-
 
 
 
@@ -628,6 +628,121 @@ async def cmd_stop(ctx):
     else:
         await ctx.send(embed=embed_warning("Nada reproduciéndose", "No hay música sonando."))
 
+# ----------------------------
+# Nueva vista y helpers para paginación de la cola
+# ----------------------------
+PER_PAGE = 50
+
+def build_queue_embed(queue: MusicQueue, page: int = 0) -> discord.Embed:
+    titles = list(queue._queue)
+    total = len(titles)
+    if total == 0:
+        return embed_info("Cola vacía", "No hay canciones en la cola 🎵")
+
+    total_pages = max(1, (total + PER_PAGE - 1) // PER_PAGE)
+    page = max(0, min(page, total_pages - 1))
+
+    start = page * PER_PAGE
+    end = min(start + PER_PAGE, total)
+    lines = [f"{i+1}. {titles[i].title}" for i in range(start, end)]
+    desc = "\n".join(lines) if lines else "(sin resultados)"
+
+    embed = embed_music("Cola actual", desc)
+    embed.set_footer(text=f"Página {page+1}/{total_pages} — {total} canciones en cola")
+    return embed
+
+class QueueView(discord.ui.View):
+    def __init__(self, author_id: int, guild_id: int, initial_page: int = 0):
+        super().__init__(timeout=None)
+        self.author_id = author_id
+        self.guild_id = guild_id
+        self.page = initial_page
+
+    async def _validate_user_voice(self, interaction: discord.Interaction) -> bool:
+        # Validación similar a la de NowPlayingView: debe estar en el mismo canal de voz que el bot
+        vc = interaction.guild.voice_client
+        if not vc:
+            await interaction.response.send_message("❌ No estoy en un canal de voz.", ephemeral=True)
+            return False
+        if not interaction.user.voice or interaction.user.voice.channel.id != vc.channel.id:
+            await interaction.response.send_message(
+                "⚠️ Debes estar en el mismo canal de voz que yo para usar estos controles.", ephemeral=True
+            )
+            return False
+        return True
+
+    async def update_message(self, interaction: discord.Interaction):
+        queue = music_queues.get(self.guild_id)
+        if not queue or len(queue) == 0:
+            await interaction.response.edit_message(embed=embed_info("Cola vacía", "No hay canciones en la cola 🎵"), view=None)
+            return
+
+        embed = build_queue_embed(queue, self.page)
+
+        # Rebuild select options based on current queue size
+        total = len(queue)
+        total_pages = max(1, (total + PER_PAGE - 1) // PER_PAGE)
+        # recreate select options
+        options = [discord.SelectOption(label=f"Página {i+1}", description=f"{i*PER_PAGE+1}-{min((i+1)*PER_PAGE, total)} canciones", value=str(i)) for i in range(total_pages)]
+
+        # find select child in view and update
+        select = None
+        for child in self.children:
+            if isinstance(child, discord.ui.Select):
+                select = child
+                break
+        if select:
+            select.options = options
+            select.placeholder = f"Ir a página (actual {self.page+1}/{total_pages})"
+
+        try:
+            await interaction.response.edit_message(embed=embed, view=self)
+        except Exception:
+            # fallback: try to send a normal message
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @discord.ui.button(label="⬅️ Anterior", style=discord.ButtonStyle.secondary)
+    async def prev_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._validate_user_voice(interaction):
+            return
+        queue = music_queues.get(self.guild_id)
+        if not queue:
+            await interaction.response.send_message("La cola fue eliminada o no existe.", ephemeral=True)
+            return
+        total = len(queue)
+        total_pages = max(1, (total + PER_PAGE - 1) // PER_PAGE)
+        self.page = (self.page - 1) % total_pages
+        await self.update_message(interaction)
+
+    @discord.ui.button(label="Siguiente ➡️", style=discord.ButtonStyle.primary)
+    async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._validate_user_voice(interaction):
+            return
+        queue = music_queues.get(self.guild_id)
+        if not queue:
+            await interaction.response.send_message("La cola fue eliminada o no existe.", ephemeral=True)
+            return
+        total = len(queue)
+        total_pages = max(1, (total + PER_PAGE - 1) // PER_PAGE)
+        self.page = (self.page + 1) % total_pages
+        await self.update_message(interaction)
+
+    @discord.ui.select(placeholder="Ir a página...", min_values=1, max_values=1, options=[])
+    async def page_select(self, interaction: discord.Interaction, select: discord.ui.Select):
+        if not await self._validate_user_voice(interaction):
+            return
+        try:
+            chosen = int(select.values[0])
+        except Exception:
+            await interaction.response.send_message("Valor de página inválido.", ephemeral=True)
+            return
+        self.page = chosen
+        await self.update_message(interaction)
+
+
+# ----------------------------
+# Reemplazo del comando queue para usar la paginación
+# ----------------------------
 @bot.command(name="queue")
 @requires_same_voice_channel_after_join()
 async def cmd_queue(ctx):
@@ -635,8 +750,22 @@ async def cmd_queue(ctx):
     if not queue or len(queue) == 0:
         await ctx.send(embed=embed_info("Cola vacía", "No hay canciones en la cola 🎵"))
         return
-    desc = "\n".join([f"{i+1}. {s.title}" for i, s in enumerate(queue._queue)])
-    await ctx.send(embed=embed_music("Cola actual", desc))
+
+    total = len(queue)
+    total_pages = max(1, (total + PER_PAGE - 1) // PER_PAGE)
+    view = QueueView(author_id=ctx.author.id, guild_id=ctx.guild.id, initial_page=0)
+
+    # populate select options
+    options = [discord.SelectOption(label=f"Página {i+1}", description=f"{i*PER_PAGE+1}-{min((i+1)*PER_PAGE, total)} canciones", value=str(i)) for i in range(total_pages)]
+    # find the select inside view and set options
+    for child in view.children:
+        if isinstance(child, discord.ui.Select):
+            child.options = options
+            child.placeholder = f"Ir a página (1/{total_pages})"
+
+    embed = build_queue_embed(queue, 0)
+    await ctx.send(embed=embed, view=view)
+
 
 @bot.command(name="now")
 @requires_same_voice_channel_after_join()
@@ -665,7 +794,7 @@ async def cmd_help(ctx):
             "`#play <nombre o link>` → Reproduce música o playlists de YouTube\n"
             "`#skip` → Salta la canción actual\n"
             "`#stop` → Detiene la música y limpia la cola\n"
-            "`#queue` → Muestra la cola de canciones\n"
+            "`#queue` → Muestra la cola de canciones (paginada)\n"
             "`#now` → Muestra la canción que está sonando"
         ),
         inline=False
@@ -700,7 +829,6 @@ async def cmd_help(ctx):
 # ----------------------------
 # Comandos Bot IA
 # ----------------------------        
-
 @bot.command(name="ia")
 async def cmd_ia(ctx, *, prompt: str):
     async with ctx.typing():
