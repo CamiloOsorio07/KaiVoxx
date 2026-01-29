@@ -21,7 +21,14 @@ import shutil
 import subprocess
 from gtts import gTTS
 import discord.opus
+import ctypes.util
 
+opus_path = ctypes.util.find_library("opus")
+
+if not opus_path:
+    raise RuntimeError("libopus no encontrado en el sistema")
+
+discord.opus.load_opus(opus_path)
 if not discord.opus.is_loaded():
     discord.opus.load_opus("libopus.so.0")
 log.info(f"Opus cargado: {discord.opus.is_loaded()}")
