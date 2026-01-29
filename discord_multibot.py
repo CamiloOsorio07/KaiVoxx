@@ -133,16 +133,23 @@ def is_url(string: str) -> bool:
     return string.startswith(("http://", "https://"))
 
 async def build_ffmpeg_source(video_url: str):
-    before_options = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
+    def _extract_info():
+        return ytdl.extract_info(video_url, download=False)
 
-    def _get_url():
-        info = ytdl.extract_info(video_url, download=False)
-        if 'url' in info:
-            return info['url']
-        return info.get('formats', [])[-1].get('url')
+    info = await asyncio.to_thread(_extract_info)
+    direct_url = info.get("url")
 
-    direct_url = await asyncio.to_thread(_get_url)
-    return discord.FFmpegOpusAudio(direct_url, before_options=before_options)
+    # Cabeceras que yt-dlp recomienda
+    headers = info.get("http_headers", {})
+    headers_str = " ".join([f"-headers '{k}: {v}'" for k, v in headers.items()])
+
+    before_options = (
+        "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 "
+        f"{headers_str}"
+    )
+
+    return discord.FFmpegOpusAudio(direct_url, before_options=before_options, options="-vn")
+
 
 # ----------------------------
 # Gemma IA (Google Generative Language)
