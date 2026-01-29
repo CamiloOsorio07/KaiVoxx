@@ -115,7 +115,7 @@ now_playing_messages: Dict[int, discord.Message] = {}
 # YouTube extraction
 # ----------------------------
 YTDL_OPTS = {
-    'format': 'bestaudio/best',
+    'format': 'bestaudio[ext=m4a]/bestaudio/best',
     'noplaylist': False,
     'cookiefile': 'cookies.txt',
     'quiet': True,
@@ -139,7 +139,6 @@ async def build_ffmpeg_source(video_url: str):
     info = await asyncio.to_thread(_extract_info)
     direct_url = info.get("url")
 
-    # Cabeceras que yt-dlp recomienda
     headers = info.get("http_headers", {})
     headers_str = " ".join([f"-headers '{k}: {v}'" for k, v in headers.items()])
 
