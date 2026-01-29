@@ -5,7 +5,6 @@
 
 import os
 import random
-import tempfile
 import asyncio
 import io
 import logging
@@ -27,15 +26,16 @@ from gtts import gTTS
 # ----------------------------
 DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-# Crear cookies.txt desde variable de entorno
+
+# Crear cookies.txt desde variable de entorno (Railway)
 if os.environ.get("YT_COOKIES"):
     cookies_raw = os.environ["YT_COOKIES"].replace("\\n", "\n").replace("\\t", "\t")
     with open("cookies.txt", "w", encoding="utf-8") as f:
         f.write("# Netscape HTTP Cookie File\n")
         f.write(cookies_raw)
 
-
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+
 
 
 MAX_TTS_CHARS = 180
@@ -111,18 +111,20 @@ conversation_history: Dict[str, List[dict]] = {}
 current_song: Dict[int, Song] = {}
 now_playing_messages: Dict[int, discord.Message] = {}
 
+# ----------------------------
+# YouTube extraction
+# ----------------------------
 YTDL_OPTS = {
-    'format': 'bestaudio[ext=webm][acodec=opus]/bestaudio[ext=m4a]/bestaudio/best[protocol!=m3u8][protocol!=m3u8_native]',
+    'format': 'bestaudio/best',
     'noplaylist': False,
     'cookiefile': 'cookies.txt',
     'quiet': True,
     'no_warnings': True,
     'default_search': 'auto',
+    'extract_flat': 'in_playlist',
     'skip_download': True,
-    'outtmpl': '/tmp/%(id)s.%(ext)s',
 }
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTS)
-
 
 async def extract_info(search_or_url: str):
     return await asyncio.to_thread(lambda: ytdl.extract_info(search_or_url, download=False))
@@ -131,23 +133,16 @@ def is_url(string: str) -> bool:
     return string.startswith(("http://", "https://"))
 
 async def build_ffmpeg_source(video_url: str):
-    def _extract_info():
-        return ytdl.extract_info(video_url, download=False)
+    before_options = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
 
-    info = await asyncio.to_thread(_extract_info)
-    direct_url = info.get("url")
+    def _get_url():
+        info = ytdl.extract_info(video_url, download=False)
+        if 'url' in info:
+            return info['url']
+        return info.get('formats', [])[-1].get('url')
 
-    # Cabeceras que yt-dlp recomienda
-    headers = info.get("http_headers", {})
-    headers_str = " ".join([f"-headers '{k}: {v}'" for k, v in headers.items()])
-
-    before_options = (
-        "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 "
-        f"{headers_str}"
-    )
-
-    source = discord.FFmpegOpusAudio(direct_url, before_options=before_options, options="-vn")
-    return source, None
+    direct_url = await asyncio.to_thread(_get_url)
+    return discord.FFmpegOpusAudio(direct_url, before_options=before_options)
 
 # ----------------------------
 # Gemma IA (Google Generative Language)
@@ -419,32 +414,20 @@ async def ensure_queue_for_guild(guild_id: int) -> MusicQueue:
 
 async def start_playback_if_needed(guild: discord.Guild):
     vc = guild.voice_client
-    if not vc or not vc.is_connected():
-        return
+    if not vc or not vc.is_connected(): return
     queue = music_queues.get(guild.id)
-    if not queue or len(queue) == 0:
-        return
+    if not queue or len(queue) == 0: return
     if not vc.is_playing():
         song = queue.dequeue()
-        if not song:
-            return
+        if not song: return
         try:
-            # build_ffmpeg_source ahora devuelve (source, None) porque usamos streaming
-            source, filepath = await build_ffmpeg_source(song.url)
-
-            def after_playback(err):
-                if err:
-                    log.error(f"Playback error: {err}")
-                # ya no hay archivo temporal que borrar, filepath será None
-                asyncio.run_coroutine_threadsafe(start_playback_if_needed(guild), bot.loop)
-
-            vc.play(source, after=after_playback)
+            source = await build_ffmpeg_source(song.url)
+            vc.play(source, after=lambda err: asyncio.run_coroutine_threadsafe(start_playback_if_needed(guild), bot.loop) or (log.error(f"Playback error: {err}" if err else "")))
             current_song[guild.id] = song
             asyncio.create_task(send_now_playing_embed(song))
         except Exception:
             log.exception("Error iniciando reproducción")
             asyncio.create_task(song.channel.send("❌ Error al preparar el audio. Saltando..."))
-
 
 # ----------------------------
 # Bot events
