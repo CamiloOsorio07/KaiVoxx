@@ -123,6 +123,7 @@ YTDL_OPTS = {
     'default_search': 'auto',
     'extract_flat': 'in_playlist',
     'skip_download': True,
+    'proxy': os.environ.get("YT_PROXY"),
 }
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTS)
 
