@@ -139,27 +139,16 @@ def is_url(string: str) -> bool:
     return string.startswith(("http://", "https://"))
 
 async def build_ffmpeg_source(video_url: str):
-    def _extract():
-        try:
-            info = ytdl.extract_info(video_url, download=False)
-        except Exception:
-            # fallback: buscar por ID
-            info = ytdl.extract_info(f"ytsearch:{video_url}", download=False)
-            if "entries" in info:
-                info = info["entries"][0]
+    before_options = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
 
-        if "entries" in info:
-            info = info["entries"][0]
+    def _get_url():
+        info = ytdl.extract_info(video_url, download=False)
+        if 'url' in info:
+            return info['url']
+        return info.get('formats', [])[-1].get('url')
 
-        return info["url"]
-
-    audio_url = await asyncio.to_thread(_extract)
-
-    return discord.FFmpegPCMAudio(
-        audio_url,
-        before_options="-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
-        options="-vn"
-    )
+    direct_url = await asyncio.to_thread(_get_url)
+    return discord.FFmpegOpusAudio(direct_url, before_options=before_options)
     
 # ----------------------------
 # Gemma IA (Google Generative Language)
