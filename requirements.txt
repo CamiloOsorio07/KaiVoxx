@@ -1,6 +1,5 @@
 discord.py
 PyNaCl==1.5.0
-ffmpeg
 yt-dlp>=2025.10.14
 gtts
 flask
