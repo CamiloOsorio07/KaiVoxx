@@ -107,15 +107,16 @@ now_playing_messages: Dict[int, discord.Message] = {}
 # YouTube extraction
 # ----------------------------
 YTDL_OPTS = {
-    'format': 'bestaudio[protocol!=m3u8]/bestaudio/best',
+    "format": "bestaudio/best",
     'noplaylist': False,
-    'cookiefile': 'cookies.txt',
     'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
                   'AppleWebKit/537.36 (KHTML, like Gecko) '
                   'Chrome/120.0.0.0 Safari/537.36',
     'quiet': True,
     'no_warnings': True,
-    'default_search': 'auto',
+    'default_search': 'ytsearch',
+    "nocheckcertificate": True,
+    "source_address": "0.0.0.0",  # fuerza IPv4
     'extract_flat': 'in_playlist',
     'skip_download': True,
 }
@@ -128,60 +129,23 @@ def is_url(string: str) -> bool:
     return string.startswith(("http://", "https://"))
 
 async def build_ffmpeg_source(video_url: str):
-    """
-    Obtiene la URL directa con yt_dlp y pasa los http headers a ffmpeg para evitar 403.
-    """
-    def _get_url_and_headers():
+    def _extract():
         info = ytdl.extract_info(video_url, download=False)
-        # info puede ser un dict con 'formats' o ya el formato.
-        formats = info.get('formats') if isinstance(info, dict) else None
-        if formats:
-            # preferir formatos no-hls y con audio (evitar 'm3u8' si es posible)
-            # buscar el mejor formato con url que no sea hls
-            candidate = None
-            for f in reversed(formats):
-                proto = f.get('protocol', '')
-                acodec = f.get('acodec', '')
-                if acodec != 'none' and 'm3u8' not in proto:
-                    candidate = f
-                    break
-            if not candidate:
-                candidate = formats[-1]
-        else:
-            candidate = info
 
-        direct_url = candidate.get('url')
-        # yt_dlp puede devolver headers en varios lugares
-        headers = candidate.get('http_headers') or info.get('http_headers') or {}
-        # garantizar user-agent/referer mínimos
-        if 'User-Agent' not in headers:
-            headers['User-Agent'] = YTDL_OPTS.get('user_agent', 'Mozilla/5.0')
-        if 'Referer' not in headers:
-            headers['Referer'] = 'https://www.youtube.com/'
+        if "entries" in info:
+            info = info["entries"][0]
 
-        return direct_url, headers
+        return info["url"]
 
-    try:
-        direct_url, headers = await asyncio.to_thread(_get_url_and_headers)
-        if not direct_url:
-            raise RuntimeError("No se obtuvo una URL válida para ffmpeg")
+    audio_url = await asyncio.to_thread(_extract)
 
-        # construir string de headers para ffmpeg (cada header termina con \r\n)
-        headers_str = "".join(f"{k}: {v}\\r\\n" for k, v in headers.items())
+    FFMPEG_OPTIONS = {
+        "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -nostdin",
+        "options": "-vn"
+    }
 
-        # before_options: reconexión + headers
-        before_options = (
-            "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 "
-            f"-headers \"{headers_str}\""
-        )
-        # options: evitar video, log corto
-        options = "-vn -nostdin -loglevel warning"
-
-        return discord.FFmpegOpusAudio(direct_url, before_options=before_options, options=options)
-
-    except Exception:
-        log.exception("Error preparando FFmpeg source")
-        raise
+    return discord.FFmpegPCMAudio(audio_url, **FFMPEG_OPTIONS)
+    
 # ----------------------------
 # Gemma IA (Google Generative Language)
 # ----------------------------
