@@ -119,7 +119,6 @@ now_playing_messages: Dict[int, discord.Message] = {}
 YTDL_OPTS = {
     'format': 'bestaudio[ext=m4a]/bestaudio/best',
     'noplaylist': False,
-    'cookiefile': 'cookies.txt',
     'quiet': True,
     'no_warnings': True,
     'default_search': 'auto',
