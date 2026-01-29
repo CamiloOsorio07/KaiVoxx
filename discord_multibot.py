@@ -26,6 +26,8 @@ from gtts import gTTS
 # ----------------------------
 DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+YT_PROXY = os.environ.get("YT_PROXY")
+
 
 # Crear cookies.txt desde variable de entorno (Railway)
 if os.environ.get("YT_COOKIES"):
