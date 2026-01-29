@@ -157,9 +157,9 @@ YTDL_OPTS = {
     'quiet': False,
     'no_warnings': True,
     'default_search': 'auto',
-    'extract_flat': 'in_playlist',
     'skip_download': True,
-    "http_headers": {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+    'extract_flat': False,   # ⚠️ quita esto, estaba forzando solo metadatos
+    "http_headers": {"User-Agent": "Mozilla/5.0"},
     "geo_bypass": True,
 }
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTS)
@@ -171,13 +171,26 @@ def is_url(string: str) -> bool:
     return string.startswith(("http://", "https://"))
 
 async def build_ffmpeg_source(video_url: str):
-    before_options = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
+    # Opciones previas para reconexión y cabeceras
+    cookies = ""
+    try:
+        with open("cookies.txt", "r", encoding="utf-8") as f:
+            cookies = f.read().strip()
+    except Exception:
+        pass
+
+    before_options = (
+        "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 "
+        f"-headers 'User-Agent: Mozilla/5.0\r\nCookie: {cookies}'"
+    )
 
     def _get_url():
         info = ytdl.extract_info(video_url, download=False)
-        if 'url' in info:
-            return info['url']
-        return info.get('formats', [])[-1].get('url')
+        # Busca formato de audio válido
+        for f in info.get("formats", []):
+            if f.get("acodec") != "none":
+                return f["url"]
+        return info.get("url")
 
     direct_url = await asyncio.to_thread(_get_url)
     return discord.FFmpegOpusAudio(direct_url, before_options=before_options)
