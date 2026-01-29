@@ -5,6 +5,7 @@
 
 import os
 import random
+import tempfile
 import asyncio
 import io
 import logging
@@ -129,18 +130,15 @@ def is_url(string: str) -> bool:
     return string.startswith(("http://", "https://"))
 
 async def build_ffmpeg_source(video_url: str):
-    info = await asyncio.to_thread(lambda: ytdl.extract_info(video_url, download=False))
-    direct_url = info.get("url")
+    def _download_audio():
+        # Descargar el audio a archivo temporal
+        info = ytdl.extract_info(video_url, download=True)
+        return info['requested_downloads'][0]['filepath']
 
-    headers = info.get("http_headers", {})
-    headers_str = " ".join([f"-headers '{k}: {v}'" for k, v in headers.items()])
+    filepath = await asyncio.to_thread(_download_audio)
 
-    before_options = (
-        "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 "
-        f"{headers_str}"
-    )
-
-    return discord.FFmpegOpusAudio(direct_url, before_options=before_options)
+    # Reproducir desde archivo local
+    return discord.FFmpegOpusAudio(filepath)
 
 # ----------------------------
 # Gemma IA (Google Generative Language)
