@@ -20,6 +20,11 @@ import yt_dlp
 import shutil
 import subprocess
 from gtts import gTTS
+import discord.opus
+
+if not discord.opus.is_loaded():
+    discord.opus.load_opus("libopus.so.0")
+log.info(f"Opus cargado: {discord.opus.is_loaded()}")
 
 # ----------------------------
 # Configuración
