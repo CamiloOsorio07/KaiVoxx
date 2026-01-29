@@ -5,53 +5,9 @@
 
 import os
 import random
-# -> Comprobar si hay cookies.txt directo en la carpeta del repo y priorizarlo.
-#    Si no existe, entonces intentar decodificar COOKIES_TXT_BASE64 o COOKIES_TXT.
-import os, base64, logging
-
-# ----------------------------
-# Logging
-# ----------------------------
-logging.basicConfig(level=logging.INFO)
-log = logging.getLogger("discord_multibot")
-
-log.info(f"Working dir: {os.getcwd()}")
-try:
-    log.info("Listado archivos en cwd: " + ", ".join(os.listdir(".")))
-except Exception:
-    log.exception("No pude listar el directorio actual")
-
-# Prioriza cookies.txt existente (directa)
-if os.path.exists("cookies.txt"):
-    try:
-        size = os.path.getsize("cookies.txt")
-        log.info(f"Usando cookies.txt directamente (presente en repo). Tamaño: {size} bytes")
-    except Exception:
-        log.exception("Error leyendo cookies.txt existente")
-else:
-    # Intentar cargar desde env (base64 o texto plano) sólo si no existe el archivo
-    _cookie_b64 = os.environ.get("COOKIES_TXT_BASE64")
-    _cookie_plain = os.environ.get("COOKIES_TXT")
-
-    if _cookie_b64:
-        try:
-            data = base64.b64decode(_cookie_b64)
-            with open("cookies.txt", "wb") as _f:
-                _f.write(data)
-            log.info("✅ cookies.txt escrita desde COOKIES_TXT_BASE64")
-        except Exception:
-            log.exception("❌ No se pudo escribir cookies.txt desde COOKIES_TXT_BASE64")
-    elif _cookie_plain:
-        try:
-            with open("cookies.txt", "w", encoding="utf-8") as _f:
-                _f.write(_cookie_plain)
-            log.info("✅ cookies.txt escrita desde COOKIES_TXT")
-        except Exception:
-            log.exception("❌ No se pudo escribir cookies.txt desde COOKIES_TXT")
-    else:
-        log.info("ℹ️ No hay cookies.txt ni variables COOKIES_TXT_BASE64/COOKIES_TXT definidas")
 import asyncio
 import io
+import logging
 from collections import deque
 from dataclasses import dataclass
 from typing import Deque, Dict, Optional, List
@@ -154,13 +110,11 @@ YTDL_OPTS = {
     'format': 'bestaudio/best',
     'noplaylist': False,
     'cookiefile': 'cookies.txt',
-    'quiet': False,
+    'quiet': True,
     'no_warnings': True,
     'default_search': 'auto',
+    'extract_flat': 'in_playlist',
     'skip_download': True,
-    'extract_flat': False,   # ⚠️ quita esto, estaba forzando solo metadatos
-    "http_headers": {"User-Agent": "Mozilla/5.0"},
-    "geo_bypass": True,
 }
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTS)
 
@@ -171,18 +125,13 @@ def is_url(string: str) -> bool:
     return string.startswith(("http://", "https://"))
 
 async def build_ffmpeg_source(video_url: str):
-    before_options = (
-        "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 "
-        "-headers 'User-Agent: Mozilla/5.0'"
-    )
+    before_options = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
 
     def _get_url():
         info = ytdl.extract_info(video_url, download=False)
-        # Busca formato de audio válido (itag 140 suele ser m4a)
-        for f in info.get("formats", []):
-            if f.get("acodec") != "none":
-                return f["url"]
-        return info.get("url")
+        if 'url' in info:
+            return info['url']
+        return info.get('formats', [])[-1].get('url')
 
     direct_url = await asyncio.to_thread(_get_url)
     return discord.FFmpegOpusAudio(direct_url, before_options=before_options)
