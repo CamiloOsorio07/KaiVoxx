@@ -178,7 +178,7 @@ async def build_ffmpeg_source(video_url: str):
 
     def _get_url():
         info = ytdl.extract_info(video_url, download=False)
-        # Busca formato de audio válido
+        # Busca formato de audio válido (itag 140 suele ser m4a)
         for f in info.get("formats", []):
             if f.get("acodec") != "none":
                 return f["url"]
@@ -186,7 +186,6 @@ async def build_ffmpeg_source(video_url: str):
 
     direct_url = await asyncio.to_thread(_get_url)
     return discord.FFmpegOpusAudio(direct_url, before_options=before_options)
-
 
 # ----------------------------
 # Gemma IA (Google Generative Language)
