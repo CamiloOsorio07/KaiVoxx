@@ -171,17 +171,9 @@ def is_url(string: str) -> bool:
     return string.startswith(("http://", "https://"))
 
 async def build_ffmpeg_source(video_url: str):
-    # Opciones previas para reconexión y cabeceras
-    cookies = ""
-    try:
-        with open("cookies.txt", "r", encoding="utf-8") as f:
-            cookies = f.read().strip()
-    except Exception:
-        pass
-
     before_options = (
         "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 "
-        f"-headers 'User-Agent: Mozilla/5.0\r\nCookie: {cookies}'"
+        "-headers 'User-Agent: Mozilla/5.0'"
     )
 
     def _get_url():
@@ -194,6 +186,7 @@ async def build_ffmpeg_source(video_url: str):
 
     direct_url = await asyncio.to_thread(_get_url)
     return discord.FFmpegOpusAudio(direct_url, before_options=before_options)
+
 
 # ----------------------------
 # Gemma IA (Google Generative Language)
