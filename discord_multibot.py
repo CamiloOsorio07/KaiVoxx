@@ -118,7 +118,7 @@ YTDL_OPTS = {
     'quiet': True,
     'no_warnings': True,
     'default_search': 'auto',
-    'skip_download': False,
+    'skip_download': True,
     'outtmpl': '/tmp/%(id)s.%(ext)s',
 }
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTS)
@@ -131,13 +131,23 @@ def is_url(string: str) -> bool:
     return string.startswith(("http://", "https://"))
 
 async def build_ffmpeg_source(video_url: str):
-    def _download_audio():
-        info = ytdl.extract_info(video_url, download=True)
-        return info['requested_downloads'][0]['filepath']
+    def _extract_info():
+        return ytdl.extract_info(video_url, download=False)
 
-    filepath = await asyncio.to_thread(_download_audio)
-    source = discord.FFmpegOpusAudio(filepath, options="-vn")
-    return source, filepath
+    info = await asyncio.to_thread(_extract_info)
+    direct_url = info.get("url")
+
+    # Cabeceras que yt-dlp recomienda
+    headers = info.get("http_headers", {})
+    headers_str = " ".join([f"-headers '{k}: {v}'" for k, v in headers.items()])
+
+    before_options = (
+        "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 "
+        f"{headers_str}"
+    )
+
+    source = discord.FFmpegOpusAudio(direct_url, before_options=before_options, options="-vn")
+    return source, None
 
 # ----------------------------
 # Gemma IA (Google Generative Language)
@@ -419,20 +429,13 @@ async def start_playback_if_needed(guild: discord.Guild):
         if not song:
             return
         try:
-            # build_ffmpeg_source ahora devuelve (source, filepath)
+            # build_ffmpeg_source ahora devuelve (source, None) porque usamos streaming
             source, filepath = await build_ffmpeg_source(song.url)
 
             def after_playback(err):
                 if err:
                     log.error(f"Playback error: {err}")
-                # limpiar archivo temporal
-                try:
-                    if filepath and os.path.exists(filepath):
-                        os.remove(filepath)
-                        log.info(f"Archivo temporal eliminado: {filepath}")
-                except Exception as e:
-                    log.error(f"No se pudo eliminar archivo temporal: {e}")
-                # continuar con la cola
+                # ya no hay archivo temporal que borrar, filepath será None
                 asyncio.run_coroutine_threadsafe(start_playback_if_needed(guild), bot.loop)
 
             vc.play(source, after=after_playback)
@@ -441,6 +444,7 @@ async def start_playback_if_needed(guild: discord.Guild):
         except Exception:
             log.exception("Error iniciando reproducción")
             asyncio.create_task(song.channel.send("❌ Error al preparar el audio. Saltando..."))
+
 
 # ----------------------------
 # Bot events
