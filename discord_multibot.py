@@ -132,22 +132,57 @@ YTDL_OPTS = {
 
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTS)
 
-async def extract_info(search_or_url: str):
-    return await asyncio.to_thread(lambda: ytdl.extract_info(search_or_url, download=False))
+# ----- CONFIG: cookies opcional para yt-dlp -----
+# exporta la ruta a un archivo cookies.txt en la variable de entorno YTDL_COOKIEFILE
+COOKIES_FILE = os.environ.get("YTDL_COOKIEFILE")  # opcional, ej: "/app/cookies.txt"
+if COOKIES_FILE:
+    YTDL_OPTS["cookiefile"] = COOKIES_FILE
 
-def is_url(string: str) -> bool:
-    return string.startswith(("http://", "https://"))
+# re-crea el objeto YoutubeDL con las opciones (asegúrate que esto venga después de ajustar YTDL_OPTS)
+ytdl = yt_dlp.YoutubeDL(YTDL_OPTS)
+
+async def extract_info(search_or_url: str):
+    def _extract():
+        try:
+            return ytdl.extract_info(search_or_url, download=False)
+        except yt_dlp.utils.DownloadError as e:
+            log.warning("yt-dlp DownloadError: %s", e)
+            return {"error": str(e)}
+        except yt_dlp.utils.ExtractorError as e:
+            log.warning("yt-dlp ExtractorError: %s", e)
+            return {"error": str(e)}
+        except Exception as e:
+            log.exception("Error desconocido en yt-dlp")
+            return {"error": str(e)}
+
+    return await asyncio.to_thread(_extract)
 
 async def build_ffmpeg_source(video_url: str):
     before_options = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
 
     def _get_url():
-        info = ytdl.extract_info(video_url, download=False)
-        if 'url' in info:
-            return info['url']
-        return info.get('formats', [])[-1].get('url')
+        try:
+            info = ytdl.extract_info(video_url, download=False)
+        except Exception as e:
+            log.warning("build_ffmpeg_source: error al extraer info: %s", e)
+            return None
+
+        # info puede tener 'url' o 'formats'
+        if not info:
+            return None
+        if isinstance(info, dict) and info.get("url"):
+            return info["url"]
+        formats = info.get("formats") if isinstance(info, dict) else None
+        if formats:
+            # intentar obtener el último formato usable que tenga 'url'
+            for fmt in reversed(formats):
+                if fmt.get("url"):
+                    return fmt["url"]
+        return None
 
     direct_url = await asyncio.to_thread(_get_url)
+    if not direct_url:
+        raise RuntimeError("No se pudo obtener URL directa del stream (posible bloqueo / requiere cookies).")
     return discord.FFmpegOpusAudio(direct_url, before_options=before_options)
     
 # ----------------------------
