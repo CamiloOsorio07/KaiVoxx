@@ -109,19 +109,18 @@ conversation_history: Dict[str, List[dict]] = {}
 current_song: Dict[int, Song] = {}
 now_playing_messages: Dict[int, discord.Message] = {}
 
-# ----------------------------
-# YouTube extraction (corregido)
-# ----------------------------
 YTDL_OPTS = {
     'format': 'bestaudio[ext=webm][acodec=opus]/bestaudio[ext=m4a]/bestaudio/best',
     'noplaylist': False,
-    'cookiefile': 'cookies.txt',  # asegúrate de subir este archivo a Railway
+    'cookiefile': 'cookies.txt',
     'quiet': True,
     'no_warnings': True,
     'default_search': 'auto',
-    'skip_download': True,
+    'skip_download': False,  # ahora sí descargamos
+    'outtmpl': '/tmp/%(id)s.%(ext)s',  # nombre seguro en /tmp
 }
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTS)
+
 
 async def extract_info(search_or_url: str):
     return await asyncio.to_thread(lambda: ytdl.extract_info(search_or_url, download=False))
@@ -131,14 +130,12 @@ def is_url(string: str) -> bool:
 
 async def build_ffmpeg_source(video_url: str):
     def _download_audio():
-        # Descargar el audio a archivo temporal
         info = ytdl.extract_info(video_url, download=True)
         return info['requested_downloads'][0]['filepath']
 
     filepath = await asyncio.to_thread(_download_audio)
-
-    # Reproducir desde archivo local
-    return discord.FFmpegOpusAudio(filepath)
+    source = discord.FFmpegOpusAudio(filepath, options="-vn")
+    return source, filepath
 
 # ----------------------------
 # Gemma IA (Google Generative Language)
@@ -410,15 +407,33 @@ async def ensure_queue_for_guild(guild_id: int) -> MusicQueue:
 
 async def start_playback_if_needed(guild: discord.Guild):
     vc = guild.voice_client
-    if not vc or not vc.is_connected(): return
+    if not vc or not vc.is_connected():
+        return
     queue = music_queues.get(guild.id)
-    if not queue or len(queue) == 0: return
+    if not queue or len(queue) == 0:
+        return
     if not vc.is_playing():
         song = queue.dequeue()
-        if not song: return
+        if not song:
+            return
         try:
-            source = await build_ffmpeg_source(song.url)
-            vc.play(source, after=lambda err: asyncio.run_coroutine_threadsafe(start_playback_if_needed(guild), bot.loop) or (log.error(f"Playback error: {err}" if err else "")))
+            # build_ffmpeg_source ahora devuelve (source, filepath)
+            source, filepath = await build_ffmpeg_source(song.url)
+
+            def after_playback(err):
+                if err:
+                    log.error(f"Playback error: {err}")
+                # limpiar archivo temporal
+                try:
+                    if filepath and os.path.exists(filepath):
+                        os.remove(filepath)
+                        log.info(f"Archivo temporal eliminado: {filepath}")
+                except Exception as e:
+                    log.error(f"No se pudo eliminar archivo temporal: {e}")
+                # continuar con la cola
+                asyncio.run_coroutine_threadsafe(start_playback_if_needed(guild), bot.loop)
+
+            vc.play(source, after=after_playback)
             current_song[guild.id] = song
             asyncio.create_task(send_now_playing_embed(song))
         except Exception:
