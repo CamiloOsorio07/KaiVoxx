@@ -137,13 +137,22 @@ async def build_ffmpeg_source(video_url: str):
         "Chrome/120.0.0.0 Safari/537.36\""
     )
 
-    def _get_url():
+    def _get_direct_audio_url():
         info = ytdl.extract_info(video_url, download=False)
-        if 'url' in info:
-            return info['url']
-        return info.get('formats', [])[-1].get('url')
 
-    direct_url = await asyncio.to_thread(_get_url)
+        formats = info.get("formats", [])
+        for f in formats:
+            if (
+                f.get("acodec") != "none"
+                and f.get("vcodec") == "none"
+                and f.get("protocol") != "m3u8"
+                and f.get("url")
+            ):
+                return f["url"]
+
+        raise RuntimeError("No se encontró un stream de audio directo válido")
+
+    direct_url = await asyncio.to_thread(_get_direct_audio_url)
 
     return discord.FFmpegOpusAudio(
         direct_url,
