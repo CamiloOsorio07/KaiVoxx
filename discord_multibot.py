@@ -5,6 +5,7 @@
 
 import os
 import random
+import base64
 import asyncio
 import io
 import logging
@@ -19,8 +20,6 @@ import requests
 import yt_dlp
 import shutil
 import subprocess
-import base64
-import os
 from gtts import gTTS
 
 # ----------------------------
@@ -48,31 +47,47 @@ BOT_PREFIX = "#"
 MAX_QUEUE_LENGTH = 500
 TTS_LANGUAGE = "es"
 
-# --- Escribir cookies.txt desde variable de entorno ---
-_cookie_b64 = os.environ.get("COOKIES_TXT_BASE64")
-_cookie_plain = os.environ.get("COOKIES_TXT")  # alternativa: pegar el texto crudo (menos seguro)
-
-if _cookie_b64:
-    try:
-        with open("cookies.txt", "wb") as _f:
-            _f.write(base64.b64decode(_cookie_b64))
-        log.info("cookies.txt escrita desde COOKIES_TXT_BASE64")
-    except Exception as e:
-        log.exception("No se pudo escribir cookies.txt desde base64: %s", e)
-elif _cookie_plain:
-    try:
-        with open("cookies.txt", "w", encoding="utf-8") as _f:
-            _f.write(_cookie_plain)
-        log.info("cookies.txt escrita desde COOKIES_TXT")
-    except Exception as e:
-        log.exception("No se pudo escribir cookies.txt desde COOKIES_TXT: %s", e)
-# Si no hay variable, ytdl seguirá sin cookies (eso es intencional).
-
 # ----------------------------
 # Logging
 # ----------------------------
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("discord_multibot")
+
+# ----------------------------
+# Escribir cookies.txt desde variable de entorno (base64 o texto plano)
+# ----------------------------
+_cookie_b64 = os.environ.get("COOKIES_TXT_BASE64")
+_cookie_plain = os.environ.get("COOKIES_TXT")  # alternativa: pegar el texto crudo (menos seguro)
+
+if _cookie_b64:
+    try:
+        data = base64.b64decode(_cookie_b64)
+        with open("cookies.txt", "wb") as _f:
+            _f.write(data)
+        log.info("✅ cookies.txt escrita desde COOKIES_TXT_BASE64")
+    except Exception:
+        log.exception("❌ No se pudo escribir cookies.txt desde COOKIES_TXT_BASE64")
+elif _cookie_plain:
+    try:
+        with open("cookies.txt", "w", encoding="utf-8") as _f:
+            _f.write(_cookie_plain)
+        log.info("✅ cookies.txt escrita desde COOKIES_TXT")
+    except Exception:
+        log.exception("❌ No se pudo escribir cookies.txt desde COOKIES_TXT")
+else:
+    log.info("ℹ️ COOKIES_TXT_BASE64 / COOKIES_TXT no definidas — no se usará cookies.txt")
+
+# Verificar existencia/tamaño del archivo para debug
+if os.path.exists("cookies.txt"):
+    try:
+        size = os.path.getsize("cookies.txt")
+        log.info(f"cookies.txt existe en runtime — tamaño: {size} bytes")
+        if size < 20:
+            log.warning("cookies.txt parece demasiado pequeño (probablemente inválido)")
+    except Exception:
+        log.exception("Error comprobando cookies.txt")
+else:
+    log.warning("cookies.txt NO existe después del intento de escritura")
 
 # ----------------------------
 # Discord bot init
@@ -132,7 +147,7 @@ YTDL_OPTS = {
     'format': 'bestaudio/best',
     'noplaylist': False,
     'cookiefile': 'cookies.txt',
-    'quiet': True,
+    'quiet': False,
     'no_warnings': True,
     'default_search': 'auto',
     'extract_flat': 'in_playlist',
