@@ -159,21 +159,27 @@ async def build_ffmpeg_source(video_url: str):
 
     # obtener URL de audio directo (no m3u8)
     def _get_direct_audio_url():
-        info = ytdl.extract_info(video_url, download=False)
-        formats = info.get("formats", [])
-        for f in formats:
-            if f.get("acodec") != "none" and f.get("vcodec") == "none" and f.get("protocol") != "m3u8" and f.get("url"):
-                return f["url"]
-        # si no encuentra, lanzar para manejar el error más arriba
-        raise RuntimeError("No se encontró un stream de audio directo válido")
+    info = ytdl.extract_info(video_url, download=False)
+    formats = info.get("formats", [])
 
-    direct_url = await asyncio.to_thread(_get_direct_audio_url)
+    # Prioridad:
+    # 1) audio-only
+    # 2) luego el mejor disponible
+    audio_formats = [
+        f for f in formats
+        if f.get("acodec") != "none"
+    ]
 
-    return discord.FFmpegOpusAudio(
-        direct_url,
-        before_options=before_options,
-        options="-vn"
+    if not audio_formats:
+        raise RuntimeError("No se encontraron formatos de audio")
+
+    # ordenar por calidad
+    audio_formats.sort(
+        key=lambda f: f.get("abr", 0),
+        reverse=True
     )
+
+    return audio_formats[0]["url"]
 # ----------------------------
 # Gemma IA (Google Generative Language)
 # ----------------------------
