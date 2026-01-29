@@ -31,7 +31,9 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 if os.environ.get("YT_COOKIES"):
     cookies_raw = os.environ["YT_COOKIES"].replace("\\n", "\n").replace("\\t", "\t")
     with open("cookies.txt", "w", encoding="utf-8") as f:
+        f.write("# Netscape HTTP Cookie File\n")
         f.write(cookies_raw)
+
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
