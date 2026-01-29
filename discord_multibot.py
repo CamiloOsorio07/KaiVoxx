@@ -128,16 +128,60 @@ def is_url(string: str) -> bool:
     return string.startswith(("http://", "https://"))
 
 async def build_ffmpeg_source(video_url: str):
-    before_options = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
-
-    def _get_url():
+    """
+    Obtiene la URL directa con yt_dlp y pasa los http headers a ffmpeg para evitar 403.
+    """
+    def _get_url_and_headers():
         info = ytdl.extract_info(video_url, download=False)
-        if 'url' in info:
-            return info['url']
-        return info.get('formats', [])[-1].get('url')
+        # info puede ser un dict con 'formats' o ya el formato.
+        formats = info.get('formats') if isinstance(info, dict) else None
+        if formats:
+            # preferir formatos no-hls y con audio (evitar 'm3u8' si es posible)
+            # buscar el mejor formato con url que no sea hls
+            candidate = None
+            for f in reversed(formats):
+                proto = f.get('protocol', '')
+                acodec = f.get('acodec', '')
+                if acodec != 'none' and 'm3u8' not in proto:
+                    candidate = f
+                    break
+            if not candidate:
+                candidate = formats[-1]
+        else:
+            candidate = info
 
-    direct_url = await asyncio.to_thread(_get_url)
-    return discord.FFmpegOpusAudio(direct_url, before_options=before_options)
+        direct_url = candidate.get('url')
+        # yt_dlp puede devolver headers en varios lugares
+        headers = candidate.get('http_headers') or info.get('http_headers') or {}
+        # garantizar user-agent/referer mínimos
+        if 'User-Agent' not in headers:
+            headers['User-Agent'] = YTDL_OPTS.get('user_agent', 'Mozilla/5.0')
+        if 'Referer' not in headers:
+            headers['Referer'] = 'https://www.youtube.com/'
+
+        return direct_url, headers
+
+    try:
+        direct_url, headers = await asyncio.to_thread(_get_url_and_headers)
+        if not direct_url:
+            raise RuntimeError("No se obtuvo una URL válida para ffmpeg")
+
+        # construir string de headers para ffmpeg (cada header termina con \r\n)
+        headers_str = "".join(f"{k}: {v}\\r\\n" for k, v in headers.items())
+
+        # before_options: reconexión + headers
+        before_options = (
+            "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 "
+            f"-headers \"{headers_str}\""
+        )
+        # options: evitar video, log corto
+        options = "-vn -nostdin -loglevel warning"
+
+        return discord.FFmpegOpusAudio(direct_url, before_options=before_options, options=options)
+
+    except Exception:
+        log.exception("Error preparando FFmpeg source")
+        raise
 # ----------------------------
 # Gemma IA (Google Generative Language)
 # ----------------------------
