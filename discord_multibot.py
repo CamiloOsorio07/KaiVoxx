@@ -115,6 +115,7 @@ YTDL_OPTS = {
     'default_search': 'auto',
     'extract_flat': 'in_playlist',
     'skip_download': True,
+    'source_address': '0.0.0.0',
 }
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTS)
 
@@ -125,16 +126,54 @@ def is_url(string: str) -> bool:
     return string.startswith(("http://", "https://"))
 
 async def build_ffmpeg_source(video_url: str):
+    """
+    Intenta reproducir usando la URL directa de yt-dlp y pasa las http_headers a ffmpeg.
+    Si eso falla, hace un download temporal como fallback.
+    """
     before_options = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
 
-    def _get_url():
-        info = ytdl.extract_info(video_url, download=False)
-        if 'url' in info:
-            return info['url']
-        return info.get('formats', [])[-1].get('url')
+    def _extract():
+        return ytdl.extract_info(video_url, download=False)
 
-    direct_url = await asyncio.to_thread(_get_url)
-    return discord.FFmpegOpusAudio(direct_url, before_options=before_options)
+    try:
+        info = await asyncio.to_thread(_extract)
+    except Exception:
+        log.exception("yt-dlp extract_info failed")
+        raise
+
+    # Si yt-dlp devuelve headers que ffmpeg necesita, construimos -headers
+    headers = info.get("http_headers") or info.get("http_header") or {}
+    header_str = "".join(f"{k}: {v}\\r\\n" for k, v in headers.items()) if headers else None
+
+    # Preferir campo 'url' (stream directo)
+    direct_url = info.get("url") or (info.get("formats") and info["formats"][-1].get("url"))
+
+    if direct_url:
+        options = None
+        if header_str:
+            # pasar cabeceras a ffmpeg
+            options = f'-vn -headers "{header_str}"'
+        try:
+            return discord.FFmpegOpusAudio(direct_url, before_options=before_options, options=options)
+        except Exception:
+            log.exception("Reproducción por URL directa falló, intentar fallback de descarga")
+
+    # Fallback: descargar temporalmente el audio y reproducir el archivo
+    try:
+        # descarga con yt-dlp a archivo temporal
+        download_opts = YTDL_OPTS.copy()
+        download_opts.update({'outtmpl': 'temp_audio_%(id)s.%(ext)s', 'noplaylist': True})
+        ytdl_dl = yt_dlp.YoutubeDL(download_opts)
+
+        def _download():
+            return ytdl_dl.extract_info(video_url, download=True)
+
+        info_dl = await asyncio.to_thread(_download)
+        filename = ytdl_dl.prepare_filename(info_dl)
+        return discord.FFmpegOpusAudio(filename)
+    except Exception:
+        log.exception("Fallback de descarga falló")
+        raise
 
 # ----------------------------
 # Gemma IA (Google Generative Language)
