@@ -1,6 +1,6 @@
 discord.py
 PyNaCl
-yt-dlp
+yt-dlp>=2025.12.08
 gtts
 flask
 ffmpeg
