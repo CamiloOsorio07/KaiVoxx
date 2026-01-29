@@ -28,6 +28,11 @@ if not discord.opus.is_loaded():
     except OSError:
         pass  # Discord.py manejará opus automáticamente
 
+import re
+
+def is_url(text: str) -> bool:
+    return bool(re.match(r"https?://", text))
+
 # ----------------------------
 # Configuración
 # ----------------------------
@@ -158,32 +163,25 @@ async def extract_info(search_or_url: str):
     return await asyncio.to_thread(_extract)
 
 async def build_ffmpeg_source(video_url: str):
-    before_options = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
+    ffmpeg_options = {
+        "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
+        "options": "-vn"
+    }
 
-    def _get_url():
-        try:
-            info = ytdl.extract_info(video_url, download=False)
-        except Exception as e:
-            log.warning("build_ffmpeg_source: error al extraer info: %s", e)
-            return None
+    def _extract():
+        info = ytdl.extract_info(video_url, download=False)
 
-        # info puede tener 'url' o 'formats'
-        if not info:
-            return None
-        if isinstance(info, dict) and info.get("url"):
-            return info["url"]
-        formats = info.get("formats") if isinstance(info, dict) else None
-        if formats:
-            # intentar obtener el último formato usable que tenga 'url'
-            for fmt in reversed(formats):
-                if fmt.get("url"):
-                    return fmt["url"]
-        return None
+        if "entries" in info:
+            info = info["entries"][0]
 
-    direct_url = await asyncio.to_thread(_get_url)
-    if not direct_url:
-        raise RuntimeError("No se pudo obtener URL directa del stream (posible bloqueo / requiere cookies).")
-    return discord.FFmpegOpusAudio(direct_url, before_options=before_options)
+        return info["url"]
+
+    direct_url = await asyncio.to_thread(_extract)
+
+    return discord.PCMVolumeTransformer(
+        discord.FFmpegPCMAudio(direct_url, **ffmpeg_options),
+        volume=0.8
+    )
     
 # ----------------------------
 # Gemma IA (Google Generative Language)
@@ -463,12 +461,20 @@ async def start_playback_if_needed(guild: discord.Guild):
         if not song: return
         try:
             source = await build_ffmpeg_source(song.url)
-            vc.play(source, after=lambda err: asyncio.run_coroutine_threadsafe(start_playback_if_needed(guild), bot.loop) or (log.error(f"Playback error: {err}" if err else "")))
-            current_song[guild.id] = song
-            asyncio.create_task(send_now_playing_embed(song))
-        except Exception:
-            log.exception("Error iniciando reproducción")
-            asyncio.create_task(song.channel.send("❌ Error al preparar el audio. Saltando..."))
+            
+            def _after_play(err):
+    if err:
+        log.error(f"Playback error: {err}")
+    fut = asyncio.run_coroutine_threadsafe(
+        start_playback_if_needed(guild),
+        bot.loop
+    )
+    try:
+        fut.result()
+    except Exception as e:
+        log.error(f"After-play error: {e}")
+
+vc.play(source, after=_after_play)
 
 # ----------------------------
 # Bot events
