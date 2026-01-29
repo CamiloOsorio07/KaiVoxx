@@ -107,7 +107,7 @@ now_playing_messages: Dict[int, discord.Message] = {}
 # YouTube extraction
 # ----------------------------
 YTDL_OPTS = {
-    'format': 'bestaudio/best',
+    'format': 'bestaudio[protocol!=m3u8]/bestaudio/best',
     'noplaylist': False,
     'cookiefile': 'cookies.txt',
     'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
