@@ -109,11 +109,10 @@ now_playing_messages: Dict[int, discord.Message] = {}
 YTDL_OPTS = {
     'format': 'bestaudio/best',
     'noplaylist': False,
-    'cookiefile': 'cookies.txt',
+    'cookiefile': 'cookies.txt',  # asegúrate de subir este archivo a Railway
     'quiet': True,
     'no_warnings': True,
     'default_search': 'auto',
-    'extract_flat': 'in_playlist',
     'skip_download': True,
 }
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTS)
@@ -125,13 +124,18 @@ def is_url(string: str) -> bool:
     return string.startswith(("http://", "https://"))
 
 async def build_ffmpeg_source(video_url: str):
-    before_options = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
+    # Cabeceras para evitar bloqueos de YouTube
+    before_options = (
+        "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 "
+        "-headers 'User-Agent: Mozilla/5.0'"
+    )
 
     def _get_url():
         info = ytdl.extract_info(video_url, download=False)
+        # Siempre regenerar la URL fresca
         if 'url' in info:
             return info['url']
-        return info.get('formats', [])[-1].get('url')
+        return info.get('formats', [])[0].get('url')
 
     direct_url = await asyncio.to_thread(_get_url)
     return discord.FFmpegOpusAudio(direct_url, before_options=before_options)
