@@ -132,6 +132,18 @@ YTDL_OPTS = {
 
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTS)
 
+async def extract_info(search_or_url: str):
+    try:
+        info = await asyncio.to_thread(ytdl.extract_info, search_or_url, False)
+        # si es búsqueda, yt-dlp devuelve 'entries'
+        if isinstance(info, dict) and 'entries' in info and info['entries']:
+            # dejar la estructura tal cual para que el código que ya tienes la maneje
+            return info
+        return info
+    except Exception:
+        log.exception("yt-dlp extract_info error")
+        raise
+
 async def build_ffmpeg_source(video_url: str):
     def _extract():
         try:
