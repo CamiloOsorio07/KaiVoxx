@@ -29,7 +29,7 @@ DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 # Crear cookies.txt desde variable de entorno
 if os.environ.get("YT_COOKIES"):
-    cookies_raw = os.environ["YT_COOKIES"].replace("\\n", "\n")
+    cookies_raw = os.environ["YT_COOKIES"].replace("\\n", "\n").replace("\\t", "\t")
     with open("cookies.txt", "w", encoding="utf-8") as f:
         f.write(cookies_raw)
 
