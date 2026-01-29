@@ -114,30 +114,33 @@ now_playing_messages: Dict[int, discord.Message] = {}
 # YouTube extraction
 # ----------------------------
 YTDL_OPTS = {
-    "format": "bestaudio/best",
-    'noplaylist': False,
-    'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-                  'AppleWebKit/537.36 (KHTML, like Gecko) '
-                  'Chrome/120.0.0.0 Safari/537.36',
-    'quiet': True,
-    'no_warnings': True,
-    'default_search': 'ytsearch',
-    "nocheckcertificate": True,
-    "source_address": "0.0.0.0",  # fuerza IPv4
-    'extract_flat': 'in_playlist',
-    'skip_download': True,
+    "format": "bestaudio[ext=webm]/bestaudio",
+    "quiet": True,
+    "no_warnings": True,
+    "noplaylist": False,
+    "default_search": "ytsearch",
+    "source_address": "0.0.0.0",
+    "geo_bypass": True,
+    "geo_bypass_country": "US",
+    "extractor_args": {
+        "youtube": {
+            "player_client": ["android"],
+            "skip": ["dash", "hls"]
+        }
+    }
 }
+
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTS)
-
-async def extract_info(search_or_url: str):
-    return await asyncio.to_thread(lambda: ytdl.extract_info(search_or_url, download=False))
-
-def is_url(string: str) -> bool:
-    return string.startswith(("http://", "https://"))
 
 async def build_ffmpeg_source(video_url: str):
     def _extract():
-        info = ytdl.extract_info(video_url, download=False)
+        try:
+            info = ytdl.extract_info(video_url, download=False)
+        except Exception:
+            # fallback: buscar por ID
+            info = ytdl.extract_info(f"ytsearch:{video_url}", download=False)
+            if "entries" in info:
+                info = info["entries"][0]
 
         if "entries" in info:
             info = info["entries"][0]
@@ -146,12 +149,11 @@ async def build_ffmpeg_source(video_url: str):
 
     audio_url = await asyncio.to_thread(_extract)
 
-    FFMPEG_OPTIONS = {
-        "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -nostdin",
-        "options": "-vn"
-    }
-
-    return discord.FFmpegPCMAudio(audio_url, **FFMPEG_OPTIONS)
+    return discord.FFmpegPCMAudio(
+        audio_url,
+        before_options="-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
+        options="-vn"
+    )
     
 # ----------------------------
 # Gemma IA (Google Generative Language)
