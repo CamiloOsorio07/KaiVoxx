@@ -453,28 +453,45 @@ async def ensure_queue_for_guild(guild_id: int) -> MusicQueue:
 
 async def start_playback_if_needed(guild: discord.Guild):
     vc = guild.voice_client
-    if not vc or not vc.is_connected(): return
-    queue = music_queues.get(guild.id)
-    if not queue or len(queue) == 0: return
-    if not vc.is_playing():
-        song = queue.dequeue()
-        if not song: return
-        try:
-            source = await build_ffmpeg_source(song.url)
-            
-            def _after_play(err):
-    if err:
-        log.error(f"Playback error: {err}")
-    fut = asyncio.run_coroutine_threadsafe(
-        start_playback_if_needed(guild),
-        bot.loop
-    )
-    try:
-        fut.result()
-    except Exception as e:
-        log.error(f"After-play error: {e}")
+    if not vc or not vc.is_connected():
+        return
 
-vc.play(source, after=_after_play)
+    queue = music_queues.get(guild.id)
+    if not queue or len(queue) == 0:
+        return
+
+    if vc.is_playing():
+        return
+
+    song = queue.dequeue()
+    if not song:
+        return
+
+    current_song[guild.id] = song
+
+    try:
+        source = await build_ffmpeg_source(song.url)
+
+        def _after_play(err):
+            if err:
+                log.error(f"Playback error: {err}")
+
+            fut = asyncio.run_coroutine_threadsafe(
+                start_playback_if_needed(guild),
+                bot.loop
+            )
+            try:
+                fut.result()
+            except Exception as e:
+                log.error(f"After-play error: {e}")
+
+        vc.play(source, after=_after_play)
+
+        await send_now_playing_embed(song)
+
+    except Exception:
+        log.exception("Error al reproducir la canción")
+        await start_playback_if_needed(guild)
 
 # ----------------------------
 # Bot events
