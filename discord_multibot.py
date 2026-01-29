@@ -5,10 +5,47 @@
 
 import os
 import random
-import base64
+# -> Comprobar si hay cookies.txt directo en la carpeta del repo y priorizarlo.
+#    Si no existe, entonces intentar decodificar COOKIES_TXT_BASE64 o COOKIES_TXT.
+import os, base64, logging
+
+log.info(f"Working dir: {os.getcwd()}")
+try:
+    log.info("Listado archivos en cwd: " + ", ".join(os.listdir(".")))
+except Exception:
+    log.exception("No pude listar el directorio actual")
+
+# Prioriza cookies.txt existente (directa)
+if os.path.exists("cookies.txt"):
+    try:
+        size = os.path.getsize("cookies.txt")
+        log.info(f"Usando cookies.txt directamente (presente en repo). Tamaño: {size} bytes")
+    except Exception:
+        log.exception("Error leyendo cookies.txt existente")
+else:
+    # Intentar cargar desde env (base64 o texto plano) sólo si no existe el archivo
+    _cookie_b64 = os.environ.get("COOKIES_TXT_BASE64")
+    _cookie_plain = os.environ.get("COOKIES_TXT")
+
+    if _cookie_b64:
+        try:
+            data = base64.b64decode(_cookie_b64)
+            with open("cookies.txt", "wb") as _f:
+                _f.write(data)
+            log.info("✅ cookies.txt escrita desde COOKIES_TXT_BASE64")
+        except Exception:
+            log.exception("❌ No se pudo escribir cookies.txt desde COOKIES_TXT_BASE64")
+    elif _cookie_plain:
+        try:
+            with open("cookies.txt", "w", encoding="utf-8") as _f:
+                _f.write(_cookie_plain)
+            log.info("✅ cookies.txt escrita desde COOKIES_TXT")
+        except Exception:
+            log.exception("❌ No se pudo escribir cookies.txt desde COOKIES_TXT")
+    else:
+        log.info("ℹ️ No hay cookies.txt ni variables COOKIES_TXT_BASE64/COOKIES_TXT definidas")
 import asyncio
 import io
-import logging
 from collections import deque
 from dataclasses import dataclass
 from typing import Deque, Dict, Optional, List
@@ -52,42 +89,6 @@ TTS_LANGUAGE = "es"
 # ----------------------------
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("discord_multibot")
-
-# ----------------------------
-# Escribir cookies.txt desde variable de entorno (base64 o texto plano)
-# ----------------------------
-_cookie_b64 = os.environ.get("COOKIES_TXT_BASE64")
-_cookie_plain = os.environ.get("COOKIES_TXT")  # alternativa: pegar el texto crudo (menos seguro)
-
-if _cookie_b64:
-    try:
-        data = base64.b64decode(_cookie_b64)
-        with open("cookies.txt", "wb") as _f:
-            _f.write(data)
-        log.info("✅ cookies.txt escrita desde COOKIES_TXT_BASE64")
-    except Exception:
-        log.exception("❌ No se pudo escribir cookies.txt desde COOKIES_TXT_BASE64")
-elif _cookie_plain:
-    try:
-        with open("cookies.txt", "w", encoding="utf-8") as _f:
-            _f.write(_cookie_plain)
-        log.info("✅ cookies.txt escrita desde COOKIES_TXT")
-    except Exception:
-        log.exception("❌ No se pudo escribir cookies.txt desde COOKIES_TXT")
-else:
-    log.info("ℹ️ COOKIES_TXT_BASE64 / COOKIES_TXT no definidas — no se usará cookies.txt")
-
-# Verificar existencia/tamaño del archivo para debug
-if os.path.exists("cookies.txt"):
-    try:
-        size = os.path.getsize("cookies.txt")
-        log.info(f"cookies.txt existe en runtime — tamaño: {size} bytes")
-        if size < 20:
-            log.warning("cookies.txt parece demasiado pequeño (probablemente inválido)")
-    except Exception:
-        log.exception("Error comprobando cookies.txt")
-else:
-    log.warning("cookies.txt NO existe después del intento de escritura")
 
 # ----------------------------
 # Discord bot init
