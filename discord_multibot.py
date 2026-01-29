@@ -659,7 +659,10 @@ async def cmd_play(ctx, *, search: str):
             if count >= 200: break
             url = entry.get('webpage_url') or entry.get('url')
             title = entry.get('title', 'Unknown title')
-            if queue.enqueue(Song(url, title, str(ctx.author), ctx.channel)):
+            if not url:
+                continue  # saltar entradas rotas
+            queue.enqueue(Song(url, title, str(ctx.author), ctx.channel))
+
                 songs_added += 1
         await ctx.send(embed=embed_music(
             "Playlist / Mix añadido",
@@ -667,8 +670,12 @@ async def cmd_play(ctx, *, search: str):
         ))
     else:
         url = info.get('webpage_url') or info.get('url')
-        title = info.get('title', 'Unknown title')
-        if queue.enqueue(Song(url, title, str(ctx.author), ctx.channel)):
+        if not url:
+            await ctx.send(embed=embed_error(
+                "No se pudo reproducir",
+                "YouTube bloqueó la extracción. Intenta más tarde o usa cookies."))
+            return
+
             songs_added = 1
         await ctx.send(embed=embed_music(
             "Canción añadida",
