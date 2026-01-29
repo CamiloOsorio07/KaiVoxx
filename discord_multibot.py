@@ -128,28 +128,43 @@ def is_url(string: str) -> bool:
     return string.startswith(("http://", "https://"))
 
 async def build_ffmpeg_source(video_url: str):
-    before_options = (
-        "-reconnect 1 "
-        "-reconnect_streamed 1 "
-        "-reconnect_delay_max 5 "
-        "-user_agent \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/120.0.0.0 Safari/537.36\""
-    )
+    # lee cookies desde YTDL_OPTS['cookiefile'] (si existe)
+    cookie_header = ""
+    cookiefile = YTDL_OPTS.get('cookiefile')
+    if cookiefile and os.path.exists(cookiefile):
+        def _read_cookies():
+            pairs = []
+            with open(cookiefile, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    parts = line.split("\t")
+                    # formato Netscape: domain, flag, path, secure, expiry, name, value
+                    if len(parts) >= 7:
+                        name = parts[5]
+                        value = parts[6]
+                        pairs.append(f"{name}={value}")
+            return "; ".join(pairs)
+        cookie_header = await asyncio.to_thread(_read_cookies)
 
+    # user-agent y headers para ffmpeg
+    ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    before_options = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
+    before_options += f' -user_agent "{ua}"'
+    if cookie_header:
+        # pasar cookies como header - ffmpeg las usará en cada request
+        # nota: si el header es muy largo puede dar problemas; en ese caso probar la opción 2
+        before_options += f' -headers "Cookie: {cookie_header}"'
+
+    # obtener URL de audio directo (no m3u8)
     def _get_direct_audio_url():
         info = ytdl.extract_info(video_url, download=False)
-
         formats = info.get("formats", [])
         for f in formats:
-            if (
-                f.get("acodec") != "none"
-                and f.get("vcodec") == "none"
-                and f.get("protocol") != "m3u8"
-                and f.get("url")
-            ):
+            if f.get("acodec") != "none" and f.get("vcodec") == "none" and f.get("protocol") != "m3u8" and f.get("url"):
                 return f["url"]
-
+        # si no encuentra, lanzar para manejar el error más arriba
         raise RuntimeError("No se encontró un stream de audio directo válido")
 
     direct_url = await asyncio.to_thread(_get_direct_audio_url)
@@ -159,7 +174,6 @@ async def build_ffmpeg_source(video_url: str):
         before_options=before_options,
         options="-vn"
     )
-
 # ----------------------------
 # Gemma IA (Google Generative Language)
 # ----------------------------
