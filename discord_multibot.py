@@ -26,6 +26,11 @@ from gtts import gTTS
 # ----------------------------
 DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+# Crear cookies.txt desde variable de entorno
+if os.environ.get("YT_COOKIES"):
+    with open("cookies.txt", "w", encoding="utf-8") as f:
+        f.write(os.environ["YT_COOKIES"])
+
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
@@ -104,7 +109,7 @@ current_song: Dict[int, Song] = {}
 now_playing_messages: Dict[int, discord.Message] = {}
 
 # ----------------------------
-# YouTube extraction
+# YouTube extraction (corregido)
 # ----------------------------
 YTDL_OPTS = {
     'format': 'bestaudio/best',
@@ -124,20 +129,20 @@ def is_url(string: str) -> bool:
     return string.startswith(("http://", "https://"))
 
 async def build_ffmpeg_source(video_url: str):
-    # Cabeceras para evitar bloqueos de YouTube
+    # Extraer info fresca de YouTube
+    info = await asyncio.to_thread(lambda: ytdl.extract_info(video_url, download=False))
+    direct_url = info.get("url")
+
+    # Obtener cabeceras que yt-dlp recomienda (User-Agent, cookies, etc.)
+    headers = info.get("http_headers", {})
+    headers_str = " ".join([f"-headers '{k}: {v}'" for k, v in headers.items()])
+
+    # Opciones para reconexión + cabeceras
     before_options = (
         "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 "
-        "-headers 'User-Agent: Mozilla/5.0'"
+        f"{headers_str}"
     )
 
-    def _get_url():
-        info = ytdl.extract_info(video_url, download=False)
-        # Siempre regenerar la URL fresca
-        if 'url' in info:
-            return info['url']
-        return info.get('formats', [])[0].get('url')
-
-    direct_url = await asyncio.to_thread(_get_url)
     return discord.FFmpegOpusAudio(direct_url, before_options=before_options)
 
 # ----------------------------
