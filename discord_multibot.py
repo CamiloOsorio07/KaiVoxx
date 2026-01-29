@@ -29,9 +29,9 @@ DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 # Crear cookies.txt desde variable de entorno
 if os.environ.get("YT_COOKIES"):
+    cookies_raw = os.environ["YT_COOKIES"].replace("\\n", "\n")
     with open("cookies.txt", "w", encoding="utf-8") as f:
-        f.write(os.environ["YT_COOKIES"])
-
+        f.write(cookies_raw)
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
