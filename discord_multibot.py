@@ -9,6 +9,12 @@ import random
 #    Si no existe, entonces intentar decodificar COOKIES_TXT_BASE64 o COOKIES_TXT.
 import os, base64, logging
 
+# ----------------------------
+# Logging
+# ----------------------------
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("discord_multibot")
+
 log.info(f"Working dir: {os.getcwd()}")
 try:
     log.info("Listado archivos en cwd: " + ", ".join(os.listdir(".")))
