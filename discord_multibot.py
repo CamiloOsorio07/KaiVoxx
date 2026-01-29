@@ -19,6 +19,8 @@ import requests
 import yt_dlp
 import shutil
 import subprocess
+import base64
+import os
 from gtts import gTTS
 
 # ----------------------------
@@ -45,6 +47,26 @@ SYSTEM_PROMPT = (
 BOT_PREFIX = "#"
 MAX_QUEUE_LENGTH = 500
 TTS_LANGUAGE = "es"
+
+# --- Escribir cookies.txt desde variable de entorno ---
+_cookie_b64 = os.environ.get("COOKIES_TXT_BASE64")
+_cookie_plain = os.environ.get("COOKIES_TXT")  # alternativa: pegar el texto crudo (menos seguro)
+
+if _cookie_b64:
+    try:
+        with open("cookies.txt", "wb") as _f:
+            _f.write(base64.b64decode(_cookie_b64))
+        log.info("cookies.txt escrita desde COOKIES_TXT_BASE64")
+    except Exception as e:
+        log.exception("No se pudo escribir cookies.txt desde base64: %s", e)
+elif _cookie_plain:
+    try:
+        with open("cookies.txt", "w", encoding="utf-8") as _f:
+            _f.write(_cookie_plain)
+        log.info("cookies.txt escrita desde COOKIES_TXT")
+    except Exception as e:
+        log.exception("No se pudo escribir cookies.txt desde COOKIES_TXT: %s", e)
+# Si no hay variable, ytdl seguirá sin cookies (eso es intencional).
 
 # ----------------------------
 # Logging
@@ -115,6 +137,8 @@ YTDL_OPTS = {
     'default_search': 'auto',
     'extract_flat': 'in_playlist',
     'skip_download': True,
+    "http_headers": {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+    "geo_bypass": True,
 }
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTS)
 
