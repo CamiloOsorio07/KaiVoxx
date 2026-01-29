@@ -110,14 +110,15 @@ current_song: Dict[int, Song] = {}
 now_playing_messages: Dict[int, discord.Message] = {}
 
 YTDL_OPTS = {
-    'format': 'bestaudio[ext=webm][acodec=opus]/bestaudio[ext=m4a]/bestaudio/best',
+    # Forzar audio directo en WebM/Opus o M4A
+    'format': 'bestaudio[ext=webm][acodec=opus]/bestaudio[ext=m4a]/bestaudio/best[protocol!=m3u8][protocol!=m3u8_native]',
     'noplaylist': False,
     'cookiefile': 'cookies.txt',
     'quiet': True,
     'no_warnings': True,
     'default_search': 'auto',
-    'skip_download': False,  # ahora sí descargamos
-    'outtmpl': '/tmp/%(id)s.%(ext)s',  # nombre seguro en /tmp
+    'skip_download': False,
+    'outtmpl': '/tmp/%(id)s.%(ext)s',
 }
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTS)
 
