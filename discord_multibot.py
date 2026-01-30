@@ -4,6 +4,7 @@
 # ============================================================
 
 import os
+import base64
 import random
 import asyncio
 import io
@@ -30,15 +31,40 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
-ef load_cookies_file():
-    data = os.environ.get("YTDLP_COOKIES")
-    if not data:
+# ----------------------------
+# Cookies loader (soporta base64 y multiline env)
+# ----------------------------
+def load_cookies_file():
+    """
+    Intenta leer cookies desde:
+      - YTDLP_COOKIES_BASE64 (base64-encoded cookies.txt) [RECOMENDADO]
+      - YTDLP_COOKIES (raw cookies.txt multiline)
+    Escribe /tmp/ytdlp_cookies.txt y devuelve la ruta, o None si no hay cookies.
+    """
+    b64 = os.environ.get("YTDLP_COOKIES_BASE64")
+    raw = os.environ.get("YTDLP_COOKIES")
+
+    if not b64 and not raw:
+        logging.getLogger("discord_multibot").info("No se encontraron cookies en variables de entorno.")
         return None
 
     path = "/tmp/ytdlp_cookies.txt"
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(data)
-    return path
+    try:
+        if b64:
+            decoded = base64.b64decode(b64)
+            with open(path, "wb") as f:
+                f.write(decoded)
+            logging.getLogger("discord_multibot").info("Cookies cargadas desde YTDLP_COOKIES_BASE64.")
+            return path
+
+        # else raw:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(raw)
+        logging.getLogger("discord_multibot").info("Cookies cargadas desde YTDLP_COOKIES (raw).")
+        return path
+    except Exception as e:
+        logging.getLogger("discord_multibot").exception("Error guardando cookies: %s", e)
+        return None
 
 
 COOKIE_PATH = load_cookies_file()
