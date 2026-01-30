@@ -30,6 +30,19 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
+ef load_cookies_file():
+    data = os.environ.get("YTDLP_COOKIES")
+    if not data:
+        return None
+
+    path = "/tmp/ytdlp_cookies.txt"
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(data)
+    return path
+
+
+COOKIE_PATH = load_cookies_file()
+
 
 MAX_TTS_CHARS = 180
 TTS_LANGUAGE = "es"
@@ -111,7 +124,7 @@ now_playing_messages: Dict[int, discord.Message] = {}
 YTDL_OPTS = {
     'format': 'bestaudio/best',
     'noplaylist': False,
-    'cookiefile': 'cookies.txt',
+    "cookies": COOKIE_PATH if COOKIE_PATH else None
     'quiet': True,
     'no_warnings': True,
     'default_search': 'auto',
