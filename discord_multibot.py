@@ -203,12 +203,27 @@ async def build_ffmpeg_source(video_url: str):
     before_options = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
 
     def _get_url():
+        ytdl = get_ytdl()
         info = ytdl.extract_info(video_url, download=False)
-        if 'url' in info:
+        if not info:
+            raise RuntimeError("No se pudo extraer info con yt-dlp")
+        # If extractor returns 'url' directly (like for some streams)
+        if 'url' in info and isinstance(info['url'], str):
             return info['url']
-        return info.get('formats', [])[-1].get('url')
+        # Otherwise, get the best audio format url
+        formats = info.get('formats') or []
+        if formats:
+            # prefer audio-only formats if available
+            for f in reversed(formats):
+                if f.get('acodec') != 'none' and f.get('ext') in ('m4a','webm','mp3','opus','ogg'):
+                    return f.get('url')
+            return formats[-1].get('url')
+        # As ultimate fallback, try webpage_url
+        return info.get('webpage_url')
 
     direct_url = await asyncio.to_thread(_get_url)
+    if not direct_url:
+        raise RuntimeError("No se obtuvo URL directa para ffmpeg")
     return discord.FFmpegOpusAudio(direct_url, before_options=before_options)
 
 # ----------------------------
