@@ -5,6 +5,8 @@
 
 import os
 import base64
+import tempfile
+import atexit
 import random
 import asyncio
 import io
@@ -31,43 +33,52 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
-# ----------------------------
-# Cookies loader (soporta base64 y multiline env)
-# ----------------------------
-def load_cookies_file():
+# ------------------------------------------------------------
+# COOKIES (Railway Base64)
+# ------------------------------------------------------------
+def load_cookies_from_env() -> Optional[str]:
     """
-    Intenta leer cookies desde:
-      - YTDLP_COOKIES_BASE64 (base64-encoded cookies.txt) [RECOMENDADO]
-      - YTDLP_COOKIES (raw cookies.txt multiline)
-    Escribe /tmp/ytdlp_cookies.txt y devuelve la ruta, o None si no hay cookies.
+    Carga cookies desde:
+    - YTDLP_COOKIES_BASE64 (recomendado)
+    - YTDLP_COOKIES (texto plano)
+    Retorna path a archivo temporal o None
     """
-    b64 = os.environ.get("YTDLP_COOKIES_BASE64")
-    raw = os.environ.get("YTDLP_COOKIES")
+    cookies_b64 = os.getenv("YTDLP_COOKIES_BASE64")
+    cookies_txt = os.getenv("YTDLP_COOKIES")
 
-    if not b64 and not raw:
-        logging.getLogger("discord_multibot").info("No se encontraron cookies en variables de entorno.")
+    if not cookies_b64 and not cookies_txt:
+        log.warning("No hay cookies configuradas.")
         return None
 
-    path = "/tmp/ytdlp_cookies.txt"
     try:
-        if b64:
-            decoded = base64.b64decode(b64)
-            with open(path, "wb") as f:
-                f.write(decoded)
-            logging.getLogger("discord_multibot").info("Cookies cargadas desde YTDLP_COOKIES_BASE64.")
-            return path
+        if cookies_b64:
+            log.info("Cargando cookies desde Base64…")
+            cookies_data = base64.b64decode(cookies_b64).decode("utf-8")
+        else:
+            log.info("Cargando cookies desde texto plano…")
+            cookies_data = cookies_txt
 
-        # else raw:
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(raw)
-        logging.getLogger("discord_multibot").info("Cookies cargadas desde YTDLP_COOKIES (raw).")
-        return path
+        if "Netscape HTTP Cookie File" not in cookies_data:
+            raise ValueError("Formato de cookies inválido")
+
+        tmp = tempfile.NamedTemporaryFile(
+            delete=False,
+            suffix=".txt",
+            mode="w",
+            encoding="utf-8"
+        )
+        tmp.write(cookies_data)
+        tmp.close()
+
+        log.info(f"Cookies cargadas correctamente: {tmp.name}")
+        return tmp.name
+
     except Exception as e:
-        logging.getLogger("discord_multibot").exception("Error guardando cookies: %s", e)
+        log.error(f"Error cargando cookies: {e}")
         return None
 
 
-COOKIE_PATH = load_cookies_file()
+COOKIE_FILE = load_cookies_from_env()
 
 
 MAX_TTS_CHARS = 180
@@ -156,13 +167,19 @@ YTDL_OPTS = {
     'default_search': 'auto',
     'extract_flat': False,  # try full extraction when possible
     'skip_download': True,
+    "nocheckcertificate": True,
 }
+if COOKIE_FILE:
+    YTDL_OPTS["cookiefile"] = COOKIE_FILE
 
-if COOKIE_PATH:
-    # yt-dlp espera 'cookiefile' para la ruta a cookies en formato Netscape
-    YTDL_OPTS['cookiefile'] = COOKIE_PATH
+def get_ytdl():
+    """
+    yt-dlp DEBE instanciarse por llamada
+    para evitar corrupción de estado en Railway
+    """
+    return yt_dlp.YoutubeDL(YTDL_OPTS)
 
-ytdl = yt_dlp.YoutubeDL(YTDL_OPTS)
+
 
 async def extract_info(search_or_url: str):
     """Wrapper around yt-dlp extract_info executed in a thread."""
