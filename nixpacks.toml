@@ -1,12 +1,17 @@
 [phases.setup]
-nixPkgs = ["python312", "ffmpeg", "libopus", "opusfile", "libogg"]
+nixPkgs = [
+  "python312",
+  "ffmpeg",
+  "libopus",
+  "libogg"
+]
 
 [phases.install]
 cmds = [
-    "python3 -m venv /opt/venv",
-    ". /opt/venv/bin/activate",
-    "pip install -r requirements.txt"
+  "python3 -m venv /opt/venv",
+  ". /opt/venv/bin/activate && pip install --upgrade pip",
+  ". /opt/venv/bin/activate && pip install -r requirements.txt"
 ]
 
 [start]
-cmd = "python3 discord_multibot.py"
+cmd = ". /opt/venv/bin/activate && python3 discord_multibot.py"
