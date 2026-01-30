@@ -26,6 +26,12 @@ import subprocess
 from gtts import gTTS
 
 # ----------------------------
+# Logging (debe estar antes de usar log)
+# ----------------------------
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("discord_multibot")
+
+# ----------------------------
 # Configuración
 # ----------------------------
 DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN")
@@ -106,13 +112,6 @@ SYSTEM_PROMPT = (
 
 BOT_PREFIX = "#"
 MAX_QUEUE_LENGTH = 500
-TTS_LANGUAGE = "es"
-
-# ----------------------------
-# Logging
-# ----------------------------
-logging.basicConfig(level=logging.INFO)
-log = logging.getLogger("discord_multibot")
 
 # ----------------------------
 # Discord bot init
@@ -191,9 +190,9 @@ def get_ytdl():
     return yt_dlp.YoutubeDL(YTDL_OPTS)
 
 
-
 async def extract_info(search_or_url: str):
     """Wrapper around yt-dlp extract_info executed in a thread."""
+    ytdl = get_ytdl()
     return await asyncio.to_thread(lambda: ytdl.extract_info(search_or_url, download=False))
 
 def is_url(string: str) -> bool:
@@ -1168,8 +1167,10 @@ async def cmd_resumen(ctx, *, texto: str = None):
     await ctx.send(f"📌 **Resumen:**\n{response}")
 
 
-
 # ----------------------------
 # Run bot
 # ----------------------------
-bot.run(DISCORD_TOKEN)
+if not DISCORD_TOKEN:
+    log.error("No se encontró DISCORD_TOKEN en variables de entorno. El bot no se iniciará.")
+else:
+    bot.run(DISCORD_TOKEN)
