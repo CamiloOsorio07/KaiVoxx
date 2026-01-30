@@ -261,6 +261,7 @@ def add_to_history(context_key: str, role: str, content: str, max_len: int = 10)
     conversation_history[context_key] = history[-max_len:]
 
 
+
 def build_gemma_prompt(history: List[dict]) -> str:
     prompt = f"{SYSTEM_PROMPT}\n\n"
 
@@ -272,6 +273,7 @@ def build_gemma_prompt(history: List[dict]) -> str:
 
     prompt += "Asistente:"
     return prompt
+
 
 
 def groq_chat_response(context_key: str, user_prompt: str):
@@ -310,6 +312,7 @@ def groq_chat_response(context_key: str, user_prompt: str):
     except Exception:
         log.exception("Error Groq IA")
         return "❌ Tuve un problema pensando… inténtalo otra vez 💜"
+
 
 
 # ----------------------------
@@ -380,6 +383,7 @@ async def speak_text_in_voice(vc: discord.VoiceClient, text: str):
         except Exception:
             pass
         return False
+
 
 
 # ----------------------------
@@ -831,6 +835,10 @@ async def cmd_play(ctx, *, search: str):
                     await ctx.send(embed=embed_music("Añadido (fallback)", f"🎧 Añadido **{e.get('title','Unknown')}** (búsqueda fallback)"))
         except Exception:
             await ctx.send(embed=embed_error("Error irreparable", "No pude reproducir ni encontrar la canción. Comprueba que ffmpeg y yt-dlp estén instalados en el servidor."))
+
+    # resumen final al usuario si se añadieron canciones
+    if songs_added > 0:
+        await ctx.send(embed=embed_music("Añadido a la cola", f"Se añadieron **{songs_added}** canciones. Posición final en cola: **{len(queue)}**"))
 
     await start_playback_if_needed(ctx.guild)
 
