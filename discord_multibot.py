@@ -26,18 +26,8 @@ from gtts import gTTS
 # ----------------------------
 DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-YT_PROXY = os.environ.get("YT_PROXY")
-
-
-# Crear cookies.txt desde variable de entorno (Railway)
-if os.environ.get("YT_COOKIES"):
-    cookies_raw = os.environ["YT_COOKIES"].replace("\\n", "\n").replace("\\t", "\t")
-    with open("cookies.txt", "w", encoding="utf-8") as f:
-        f.write("# Netscape HTTP Cookie File\n")
-        f.write(cookies_raw)
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-
 
 
 MAX_TTS_CHARS = 180
@@ -117,14 +107,14 @@ now_playing_messages: Dict[int, discord.Message] = {}
 # YouTube extraction
 # ----------------------------
 YTDL_OPTS = {
-    'format': 'bestaudio[ext=m4a]/bestaudio/best',
+    'format': 'bestaudio/best',
     'noplaylist': False,
+    'cookiefile': 'cookies.txt',
     'quiet': True,
     'no_warnings': True,
     'default_search': 'auto',
     'extract_flat': 'in_playlist',
     'skip_download': True,
-    'proxy': os.environ.get("YT_PROXY"),
 }
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTS)
 
@@ -135,22 +125,16 @@ def is_url(string: str) -> bool:
     return string.startswith(("http://", "https://"))
 
 async def build_ffmpeg_source(video_url: str):
-    def _extract_info():
-        return ytdl.extract_info(video_url, download=False)
+    before_options = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
 
-    info = await asyncio.to_thread(_extract_info)
-    direct_url = info.get("url")
+    def _get_url():
+        info = ytdl.extract_info(video_url, download=False)
+        if 'url' in info:
+            return info['url']
+        return info.get('formats', [])[-1].get('url')
 
-    headers = info.get("http_headers", {})
-    headers_str = " ".join([f"-headers '{k}: {v}'" for k, v in headers.items()])
-
-    before_options = (
-        "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 "
-        f"{headers_str}"
-    )
-
-    return discord.FFmpegOpusAudio(direct_url, before_options=before_options, options="-vn")
-
+    direct_url = await asyncio.to_thread(_get_url)
+    return discord.FFmpegOpusAudio(direct_url, before_options=before_options)
 
 # ----------------------------
 # Gemma IA (Google Generative Language)
