@@ -58,8 +58,9 @@ def load_cookies_from_env() -> Optional[str]:
             log.info("Cargando cookies desde texto plano…")
             cookies_data = cookies_txt
 
-        if "Netscape HTTP Cookie File" not in cookies_data:
-            raise ValueError("Formato de cookies inválido")
+        # Validación simple del header típico de Netscape cookie file
+        if "Netscape HTTP Cookie File" not in cookies_data and "# Netscape HTTP Cookie File" not in cookies_data:
+            raise ValueError("Formato de cookies inválido: falta header 'Netscape HTTP Cookie File'")
 
         tmp = tempfile.NamedTemporaryFile(
             delete=False,
@@ -80,6 +81,16 @@ def load_cookies_from_env() -> Optional[str]:
 
 COOKIE_FILE = load_cookies_from_env()
 
+# Registrar limpieza del archivo temporal si fue creado
+if COOKIE_FILE:
+    def _cleanup_cookie_file():
+        try:
+            if os.path.exists(COOKIE_FILE):
+                os.remove(COOKIE_FILE)
+                log.info(f"Cookie file temporal eliminado: {COOKIE_FILE}")
+        except Exception as e:
+            log.warning(f"No pude borrar cookie file temporal: {e}")
+    atexit.register(_cleanup_cookie_file)
 
 MAX_TTS_CHARS = 180
 TTS_LANGUAGE = "es"
@@ -192,6 +203,7 @@ async def build_ffmpeg_source(video_url: str):
     before_options = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
 
     def _get_url():
+        ytdl = get_ytdl()
         info = ytdl.extract_info(video_url, download=False)
         if not info:
             raise RuntimeError("No se pudo extraer info con yt-dlp")
