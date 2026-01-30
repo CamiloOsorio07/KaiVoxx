@@ -147,16 +147,21 @@ now_playing_messages: Dict[int, discord.Message] = {}
 # ----------------------------
 # YouTube/yt-dlp extraction
 # ----------------------------
+# Construimos opciones incluyendo cookiefile solo si existe
 YTDL_OPTS = {
     'format': 'bestaudio/best',
     'noplaylist': False,
-    "cookies": COOKIE_PATH if COOKIE_PATH else None
     'quiet': True,
     'no_warnings': True,
     'default_search': 'auto',
     'extract_flat': False,  # try full extraction when possible
     'skip_download': True,
 }
+
+if COOKIE_PATH:
+    # yt-dlp espera 'cookiefile' para la ruta a cookies en formato Netscape
+    YTDL_OPTS['cookiefile'] = COOKIE_PATH
+
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTS)
 
 async def extract_info(search_or_url: str):
