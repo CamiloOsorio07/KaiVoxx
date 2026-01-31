@@ -176,7 +176,8 @@ YTDL_OPTS = {
     'quiet': True,
     'no_warnings': True,
     'default_search': 'auto',
-    'extract_flat': False,  # try full extraction when possible
+    'extract_flat': 'in_playlist',  # 🔑 CLAVE
+    'ignoreerrors': True,            # 🔑 NO rompe la playlist
     'skip_download': True,
     "nocheckcertificate": True,
 }
