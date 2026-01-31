@@ -195,37 +195,59 @@ def get_ytdl():
 async def extract_info(search_or_url: str):
     """Wrapper around yt-dlp extract_info executed in a thread."""
     ytdl = get_ytdl()
-    return await asyncio.to_thread(lambda: ytdl.extract_info(search_or_url, download=False))
+    return await asyncio.to_thread(
+        lambda: ytdl.extract_info(search_or_url, download=False)
+    )
+
 
 def is_url(string: str) -> bool:
     return string.startswith(("http://", "https://")) or string.startswith("spotify:")
 
+
 async def build_ffmpeg_source(video_url: str):
     before_options = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
 
-    def _get_url():
+    def _get_stream():
         ytdl = get_ytdl()
         info = ytdl.extract_info(video_url, download=False)
+
         if not info:
             raise RuntimeError("No se pudo extraer info con yt-dlp")
-        # If extractor returns 'url' directly (like for some streams)
-        if 'url' in info and isinstance(info['url'], str):
-            return info['url']
-        # Otherwise, get the best audio format url
-        formats = info.get('formats') or []
-        if formats:
-            # prefer audio-only formats if available
-            for f in reversed(formats):
-                if f.get('acodec') != 'none' and f.get('ext') in ('m4a','webm','mp3','opus','ogg'):
-                    return f.get('url')
-            return formats[-1].get('url')
-        # As ultimate fallback, try webpage_url
-        return info.get('webpage_url')
 
-    direct_url = await asyncio.to_thread(_get_url)
-    if not direct_url:
-        raise RuntimeError("No se obtuvo URL directa para ffmpeg")
-    return discord.FFmpegOpusAudio(direct_url, before_options=before_options)
+        # yt-dlp normalmente ya devuelve la mejor URL de audio aquí
+        stream_url = None
+
+        if isinstance(info.get("url"), str):
+            stream_url = info["url"]
+        else:
+            formats = info.get("formats") or []
+            for f in reversed(formats):
+                if (
+                    f.get("acodec") != "none"
+                    and f.get("url")
+                    and f.get("ext") in ("m4a", "webm", "opus", "ogg", "mp3")
+                ):
+                    stream_url = f["url"]
+                    break
+
+        if not stream_url:
+            raise RuntimeError("No se obtuvo URL de stream válida")
+
+        headers = info.get("http_headers", {})
+        return stream_url, headers
+
+    stream_url, headers = await asyncio.to_thread(_get_stream)
+
+    # Convertir headers a formato aceptado por ffmpeg
+    headers_str = ""
+    for k, v in headers.items():
+        headers_str += f"{k}: {v}\r\n"
+
+    return discord.FFmpegOpusAudio(
+        stream_url,
+        before_options=before_options,
+        options=f'-headers "{headers_str}"'
+    )
 
 # ----------------------------
 # Plataforma detect
