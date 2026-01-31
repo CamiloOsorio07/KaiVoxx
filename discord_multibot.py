@@ -1049,6 +1049,3 @@ async def cmd_resumen(ctx, *, texto: str = None):
 # Run bot
 # ----------------------------
 bot.run(DISCORD_TOKEN)
-    log.error("No se encontró DISCORD_TOKEN en variables de entorno. El bot no se iniciará.")
-else:
-    bot.run(DISCORD_TOKEN)
