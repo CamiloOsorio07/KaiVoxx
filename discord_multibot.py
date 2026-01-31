@@ -487,15 +487,10 @@ async def send_now_playing_embed(song: Song):
     guild_id = song.channel.guild.id
     view = NowPlayingView(bot, guild_id)
     embed = embed_music("Now Playing ✨", f"**[{song.title}]({song.url})**")
-    # thumbnail for youtube-like links
     if "watch?v=" in song.url:
-        try:
-            video_id = song.url.split('=')[1]
-            embed.set_thumbnail(url=f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg")
-        except Exception:
-            pass
+        embed.set_thumbnail(url=f"https://img.youtube.com/vi/{song.url.split('=')[1]}/hqdefault.jpg")
     embed.add_field(name="Requested by", value=f"💜 {song.requester_name}", inline=True)
-    embed.add_field(name="Source", value=f"{song.source}", inline=True)
+    embed.add_field(name="Source", value="YouTube 🎵", inline=True)
     embed.add_field(name="Time Elapsed", value="0:00", inline=False)
     msg = await song.channel.send(embed=embed, view=view)
     now_playing_messages[guild_id] = msg
@@ -696,151 +691,31 @@ async def cmd_play(ctx, *, search: str):
         vc = await ctx.author.voice.channel.connect()
 
     queue = await ensure_queue_for_guild(ctx.guild.id)
-    await ctx.send(embed=embed_info("Buscando…", f"🔍 **{search}**"))
+    await ctx.send(embed=embed_info("Buscando en YouTube…", f"🔍 **{search}**"))
 
-    platform = detect_platform(search) if is_url(search) else 'search'
+    info = await extract_info(search if is_url(search) else f"ytsearch:{search}")
     songs_added = 0
 
-    # Helper: enqueue single track
-    async def enqueue_track(url, title, source_label="YouTube"):
-        nonlocal songs_added
-        if queue.enqueue(Song(url, title, str(ctx.author), ctx.channel, source=source_label)):
-            songs_added += 1
-
-    try:
-        if platform == 'spotify':
-            # For Spotify, we search YouTube for equivalent
-            await ctx.send(embed=embed_info("Spotify link recibido", "Buscando equivalente en YouTube…"))
-            # Try to extract metadata from spotify link (if yt-dlp can) to build a search query
-            try:
-                info = await extract_info(search)
-                # info could be a dict with title/uploader etc
-                if isinstance(info, dict):
-                    title = info.get('title') or info.get('track') or ''
-                    artist = ''
-                    # Some spotify extractors put artist in 'artist' or 'artist_name' or 'uploader'
-                    artist = info.get('artist') or info.get('artist_name') or info.get('uploader') or ''
-                    query = (artist + ' ' + title).strip() if title else search
-                else:
-                    query = search
-            except Exception:
-                log.info("No se pudo extraer metadata de Spotify; usando búsqueda genérica")
-                query = search
-
-            # Search YouTube for the query (pick first result)
-            try:
-                yt_search = await extract_info(f"ytsearch1:{query}")
-                if isinstance(yt_search, dict) and yt_search.get('entries'):
-                    entry = yt_search['entries'][0]
-                    url = entry.get('webpage_url') or entry.get('url')
-                    title = entry.get('title', query)
-                    await enqueue_track(url, title, source_label="Spotify → YouTube")
-                else:
-                    # fallback: try plain ytsearch
-                    await ctx.send(embed=embed_warning("No encontré en YouTube", "Intentando búsqueda alternativa..."))
-                    try:
-                        yt_search2 = await extract_info(f"ytsearch1:{query}")
-                        entry = yt_search2['entries'][0]
-                        await enqueue_track(entry.get('webpage_url') or entry.get('url'), entry.get('title', query), source_label="Spotify → YouTube")
-                    except Exception:
-                        await ctx.send(embed=embed_error("Falló extracción", "No pude encontrar una versión en YouTube."))
-            except Exception:
-                log.exception("Error buscando en YouTube para Spotify link")
-                # as last resort, search YouTube by raw URL string
-                try:
-                    yt_search3 = await extract_info(f"ytsearch1:{search}")
-                    entry = yt_search3['entries'][0]
-                    await enqueue_track(entry.get('webpage_url') or entry.get('url'), entry.get('title', search), source_label="Spotify → YouTube")
-                except Exception:
-                    await ctx.send(embed=embed_error("Falló todo", "No pude reproducir el enlace de Spotify ni encontrarlo en YouTube."))
-
-        elif platform in ('soundcloud', 'deezer'):
-            # For SoundCloud and Deezer, try to let yt-dlp stream directly
-            await ctx.send(embed=embed_info("Reproduciendo desde plataforma", f"Intentando extraer audio directo de {platform}..."))
-            try:
-                info = await extract_info(search)
-                # playlists or tracks
-                if isinstance(info, dict) and info.get('entries'):
-                    for count, entry in enumerate(info['entries']):
-                        if count >= 200: break
-                        url = entry.get('webpage_url') or entry.get('url')
-                        title = entry.get('title', 'Unknown title')
-                        await enqueue_track(url, title, source_label=platform.capitalize())
-                    await ctx.send(embed=embed_music(
-                        "Playlist añadido",
-                        f"🎶 Se añadieron **{songs_added} canciones** desde {platform}.")
-                    )
-                elif isinstance(info, dict):
-                    url = info.get('webpage_url') or info.get('url')
-                    title = info.get('title', 'Unknown title')
-                    await enqueue_track(url, title, source_label=platform.capitalize())
-                    await ctx.send(embed=embed_music("Canción añadida", f"🎧 Ahora en cola: **{title}**\n📂 Posición: **{len(queue)}**"))
-                else:
-                    # unexpected shape -> fallback to YouTube search
-                    raise RuntimeError("Info inesperada")
-            except Exception:
-                log.exception(f"Error extrayendo desde {platform}, intentando fallback a YouTube")
-                # fallback: try to search YouTube by title or raw url
-                try:
-                    fallback = await extract_info(f"ytsearch1:{search}")
-                    if isinstance(fallback, dict) and fallback.get('entries'):
-                        entry = fallback['entries'][0]
-                        await enqueue_track(entry.get('webpage_url') or entry.get('url'), entry.get('title', search), source_label=f"{platform} → YouTube")
-                except Exception:
-                    await ctx.send(embed=embed_error("Falló extracción", f"No pude reproducir ni extraer desde {platform} ni encontrar la versión en YouTube."))
-
-        elif platform == 'youtube' or (not is_url(search)):
-            # Already supports YouTube and plain searches
-            # If it's a URL, extract info directly; if search, use ytsearch
-            query = search if is_url(search) else f"ytsearch:{search}"
-            info = await extract_info(query)
-
-            if isinstance(info, dict) and 'entries' in info and info['entries']:
-                for count, entry in enumerate(info['entries']):
-                    if count >= 200: break
-                    url = entry.get('webpage_url') or entry.get('url')
-                    title = entry.get('title', 'Unknown title')
-                    await enqueue_track(url, title, source_label="YouTube")
-                await ctx.send(embed=embed_music(
-                    "Playlist / Mix añadido",
-                    f"🎶 Se añadieron **{songs_added} canciones** (máximo 200).\n📂 Cola actual: **{len(queue)}** / {queue.limit}"
-                ))
-            else:
-                # single track result
-                url = info.get('webpage_url') or info.get('url')
-                title = info.get('title', 'Unknown title')
-                await enqueue_track(url, title, source_label="YouTube")
-                await ctx.send(embed=embed_music(
-                    "Canción añadida",
-                    f"🎧 Ahora en cola: **{title}**\n📂 Posición: **{len(queue)}**"
-                ))
-
-        else:
-            # Search fallback (non-URL plain text)
-            info = await extract_info(f"ytsearch:{search}")
-            if isinstance(info, dict) and info.get('entries'):
-                entry = info['entries'][0]
-                await enqueue_track(entry.get('webpage_url') or entry.get('url'), entry.get('title', search), source_label="YouTube")
-                await ctx.send(embed=embed_music("Canción añadida", f"🎧 Ahora en cola: **{entry.get('title','Unknown')}**\n📂 Posición: **{len(queue)}**"))
-            else:
-                await ctx.send(embed=embed_error("No encontrado", "No pude encontrar la canción en YouTube."))
-
-    except Exception:
-        log.exception("Error en cmd_play general")
-        # Intentar fallback: búsqueda en YouTube con el texto raw
-        try:
-            fb = await extract_info(f"ytsearch1:{search}")
-            if isinstance(fb, dict) and fb.get('entries'):
-                e = fb['entries'][0]
-                if queue.enqueue(Song(e.get('webpage_url') or e.get('url'), e.get('title', search), str(ctx.author), ctx.channel, source="YouTube (fallback)")):
-                    songs_added = 1
-                    await ctx.send(embed=embed_music("Añadido (fallback)", f"🎧 Añadido **{e.get('title','Unknown')}** (búsqueda fallback)"))
-        except Exception:
-            await ctx.send(embed=embed_error("Error irreparable", "No pude reproducir ni encontrar la canción. Comprueba que ffmpeg y yt-dlp estén instalados en el servidor."))
-
-    # resumen final al usuario si se añadieron canciones
-    if songs_added > 0:
-        await ctx.send(embed=embed_music("Añadido a la cola", f"Se añadieron **{songs_added}** canciones. Posición final en cola: **{len(queue)}**"))
+    if isinstance(info, dict) and 'entries' in info and info['entries']:
+        for count, entry in enumerate(info['entries']):
+            if count >= 200: break
+            url = entry.get('webpage_url') or entry.get('url')
+            title = entry.get('title', 'Unknown title')
+            if queue.enqueue(Song(url, title, str(ctx.author), ctx.channel)):
+                songs_added += 1
+        await ctx.send(embed=embed_music(
+            "Playlist / Mix añadido",
+            f"🎶 Se añadieron **{songs_added} canciones** (máximo 200).\n📂 Cola actual: **{len(queue)}** / {queue.limit}"
+        ))
+    else:
+        url = info.get('webpage_url') or info.get('url')
+        title = info.get('title', 'Unknown title')
+        if queue.enqueue(Song(url, title, str(ctx.author), ctx.channel)):
+            songs_added = 1
+        await ctx.send(embed=embed_music(
+            "Canción añadida",
+            f"🎧 Ahora en cola: **{title}**\n📂 Posición: **{len(queue)}**"
+        ))
 
     await start_playback_if_needed(ctx.guild)
 
@@ -1169,10 +1044,11 @@ async def cmd_resumen(ctx, *, texto: str = None):
     await ctx.send(f"📌 **Resumen:**\n{response}")
 
 
+
 # ----------------------------
 # Run bot
 # ----------------------------
-if not DISCORD_TOKEN:
+bot.run(DISCORD_TOKEN)
     log.error("No se encontró DISCORD_TOKEN en variables de entorno. El bot no se iniciará.")
 else:
     bot.run(DISCORD_TOKEN)
