@@ -55,7 +55,7 @@ async def cmd_ia(ctx, *, prompt: str):
     aliases=["Habla", "HABLA", "h", "voz", "Voz", "tts", "TTS"]
 )
 async def cmd_habla(ctx, *, prompt: str = None):
-    from infrastructure.tts.elevenlabs_client import speak_text_in_voice
+    from infrastructure.tts.gtts_client import speak_text_in_voice
     from infrastructure.discord.views.embeds import embed_success, embed_warning
 
     if ctx.message.id in _habla_processing:

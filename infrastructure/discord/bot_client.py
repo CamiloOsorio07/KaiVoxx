@@ -79,7 +79,7 @@ async def on_message(message: discord.Message):
                 if vc.channel.id != user_channel.id:
                     await message.channel.send(embed=embed_warning("Ya estoy en otro canal", "Estoy en otro canal de voz. Pide que me unan al mismo canal o usa `#join`."))
                 else:
-                    ok = await speak_text_in_voice(vc, response) if 'speak_text_in_voice' in globals() else await __import__('infrastructure.tts.elevenlabs_client', fromlist=['speak_text_in_voice']).speak_text_in_voice(vc, response)
+                    ok = await speak_text_in_voice(vc, response) if 'speak_text_in_voice' in globals() else await __import__('infrastructure.tts.gtts_client', fromlist=['speak_text_in_voice']).speak_text_in_voice(vc, response)
                     if not ok:
                         await message.channel.send("⚠️ No pude reproducir la voz. Comprueba permisos y que ffmpeg esté disponible.")
     if not handled:
