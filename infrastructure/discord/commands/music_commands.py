@@ -24,7 +24,7 @@ def requires_same_voice_channel_after_join():
         return True
     return commands.check(predicate)
 
-@bot.command(name="join", aliases=["j", "J", "JOIN", "Join", "join"])
+@bot.command(name="join", aliases=["j", "J", "JOIN", "Join"])
 async def cmd_join(ctx):
     if ctx.author.voice and ctx.author.voice.channel:
         channel = ctx.author.voice.channel
