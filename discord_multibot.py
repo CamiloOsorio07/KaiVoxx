@@ -546,63 +546,48 @@ async def start_playback_if_needed(guild: discord.Guild):
         return
 
     queue = music_queues.get(guild.id)
-    if not queue:
+    if not queue or len(queue) == 0:
         return
 
-    # 🔁 Si la cola está vacía pero la radio está activa → añadir random
-    if len(queue) == 0 and radio_mode.get(guild.id):
-        ctx = type(
-            "Ctx",
-            (),
-            {
-                "guild": guild,
-                "channel": current_song[guild.id].channel if guild.id in current_song else None
-            }
-        )
-        if ctx.channel:
-            await add_random_song(ctx, queue)
-
-    if len(queue) == 0:
+    if vc.is_playing():
         return
 
-    if not vc.is_playing():
-        song = queue.dequeue()
-        if not song:
-            return
+    song = queue.dequeue()
+    if not song:
+        return
 
+    try:
+        source = await build_ffmpeg_source(song.url)
+    except Exception as e:
+        log.error(f"❌ Falló yt-dlp para {song.url}: {e}")
+
+        # Avisar solo una vez
         try:
-            source = await build_ffmpeg_source(song.url)
-
-            def _after(err):
-                if err:
-                    log.error(f"Playback error: {err}")
-
-                # 📻 Si radio activa → preparar la siguiente random
-                if radio_mode.get(guild.id):
-                    ctx = type(
-                        "Ctx",
-                        (),
-                        {"guild": guild, "channel": song.channel}
-                    )
-                    asyncio.run_coroutine_threadsafe(
-                        add_random_song(ctx, music_queues[guild.id]),
-                        bot.loop
-                    )
-
-                asyncio.run_coroutine_threadsafe(
-                    start_playback_if_needed(guild),
-                    bot.loop
+            await song.channel.send(
+                embed=embed_warning(
+                    "Canción bloqueada por YouTube",
+                    f"🚫 **{song.title}** no pudo reproducirse.\n⏭ Saltando automáticamente…"
                 )
-
-            vc.play(source, after=_after)
-            current_song[guild.id] = song
-            asyncio.create_task(send_now_playing_embed(song))
-
-        except Exception:
-            log.exception("Error iniciando reproducción")
-            asyncio.create_task(
-                song.channel.send("❌ Error al preparar el audio. Saltando...")
             )
+        except:
+            pass
+
+        # ⏭️ seguir con la siguiente canción (clave)
+        await start_playback_if_needed(guild)
+        return
+
+    def _after(err):
+        if err:
+            log.error(f"Playback error: {err}")
+        asyncio.run_coroutine_threadsafe(
+            start_playback_if_needed(guild),
+            bot.loop
+        )
+
+    vc.play(source, after=_after)
+    current_song[guild.id] = song
+    asyncio.create_task(send_now_playing_embed(song))
+
 
 
 async def add_random_song(ctx, queue: MusicQueue):
