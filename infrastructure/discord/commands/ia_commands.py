@@ -14,6 +14,7 @@ def detect_music_request(prompt: str) -> Union[str, None]:
     Detecta si el prompt es una solicitud de música y extrae la query.
     Retorna la query de música o None si no es una solicitud de música.
     """
+    print(f"Debug: detect_music_request called with: {prompt}")  # Debug
     prompt_lower = prompt.lower()
     music_keywords = ["pon", "reproduce", "música", "canción", "playlist", "suena", "toca", "play"]
     for keyword in music_keywords:
@@ -21,8 +22,10 @@ def detect_music_request(prompt: str) -> Union[str, None]:
             # Extraer la parte después de la keyword
             index = prompt_lower.find(keyword)
             query = prompt[index + len(keyword):].strip()
+            print(f"Debug: Found keyword '{keyword}', query: '{query}'")  # Debug
             if query:
                 return query
+    print("Debug: No music request detected")  # Debug
     return None
 
 
