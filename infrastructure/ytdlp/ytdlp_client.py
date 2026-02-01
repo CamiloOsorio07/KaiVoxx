@@ -51,3 +51,48 @@ async def build_ffmpeg_source(video_url: str):
     for k,v in headers.items():
         headers_str += f"{k}: {v}\r\n"
     return discord.FFmpegOpusAudio(stream_url, before_options=before_options, options=f'-headers "{headers_str}"')
+
+
+async def build_mixed_ffmpeg_source(video_url: str, tts_path: str):
+    """
+    Mezcla música actual + voz IA sin cortar la canción
+    """
+    before_options = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
+
+    def _get_stream():
+        ytdl = get_ytdl()
+        info = ytdl.extract_info(video_url, download=False)
+        if not info:
+            raise RuntimeError("No se pudo extraer info")
+
+        stream_url = info.get("url")
+        if not stream_url:
+            for f in reversed(info.get("formats", [])):
+                if f.get("acodec") != "none" and f.get("url"):
+                    stream_url = f["url"]
+                    break
+
+        if not stream_url:
+            raise RuntimeError("No se obtuvo stream válido")
+
+        headers = info.get("http_headers", {})
+        return stream_url, headers
+
+    stream_url, headers = await asyncio.to_thread(_get_stream)
+
+    headers_str = "".join(f"{k}: {v}\r\n" for k, v in headers.items())
+
+    options = (
+        f'-headers "{headers_str}" '
+        f'-filter_complex '
+        f'"[0:a]volume=1.0[a0];'
+        f'[1:a]volume=1.4[a1];'
+        f'[a0][a1]amix=inputs=2:duration=first:dropout_transition=2"'
+        f' -i "{tts_path}"'
+    )
+
+    return discord.FFmpegOpusAudio(
+        stream_url,
+        before_options=before_options,
+        options=options
+    )
