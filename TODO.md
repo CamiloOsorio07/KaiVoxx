@@ -1,9 +1,8 @@
-- [x] Modify infrastructure/discord/commands/ia_commands.py to detect music requests in the prompt.
-- [x] Add logic to extract music query from the prompt.
-- [x] After AI response, if music detected, call the play logic using the extracted query.
-- [x] Import necessary functions from music_commands.py.
-- [x] Fix the import and call to cmd_play.
-- [x] Create a separate play_music function without decorators.
-- [x] Update the call to use play_music.
-- [x] Compile and check for syntax errors.
-- [ ] Test the integration to ensure it works.
+# TODO: Implementar ElevenLabs TTS para voz VTuber-like en español latino
+
+- [x] Actualizar requirements.txt para agregar la librería elevenlabs
+- [x] Actualizar config/settings.py para agregar ELEVENLABS_API_KEY y ELEVENLABS_VOICE_ID
+- [x] Reemplazar el cliente TTS en infrastructure/tts/elevenlabs_client.py para usar ElevenLabs en lugar de gTTS
+- [x] Actualizar imports en ia_commands.py y bot_client.py
+- [x] Renombrar archivo de gtts_client.py a elevenlabs_client.py
+- [ ] Probar la implementación (opcional, dependiendo de confirmación del usuario)

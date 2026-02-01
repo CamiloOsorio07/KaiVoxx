@@ -3,9 +3,9 @@ import os
 import asyncio
 import logging
 import uuid
-from gtts import gTTS
+from elevenlabs import ElevenLabs
 import discord
-from config.settings import MAX_TTS_CHARS, TTS_LANGUAGE
+from config.settings import MAX_TTS_CHARS, ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID
 
 log = logging.getLogger('kaivoxx.tts')
 
@@ -22,13 +22,16 @@ async def speak_text_in_voice(vc: discord.VoiceClient, text: str):
     clean_text = text.replace("*", "").replace("_", "").replace("`", "")
 
     def _generate_audio():
-        buf = io.BytesIO()
         try:
-            gTTS(text=clean_text, lang=TTS_LANGUAGE, slow=False).write_to_fp(buf)
-            buf.seek(0)
-            return buf
+            client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
+            audio = client.generate(
+                text=clean_text,
+                voice=ELEVENLABS_VOICE_ID,
+                model="eleven_multilingual_v2"
+            )
+            return audio
         except Exception:
-            log.exception('Error generando TTS')
+            log.exception('Error generando TTS con ElevenLabs')
             raise
 
     try:
