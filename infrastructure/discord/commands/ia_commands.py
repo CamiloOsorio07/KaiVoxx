@@ -7,12 +7,29 @@ import asyncio
 # Protección contra doble ejecución
 _habla_processing = set()
 
+def detect_music_request(prompt: str) -> str or None:
+    """
+    Detecta si el prompt es una solicitud de música y extrae la query.
+    Retorna la query de música o None si no es una solicitud de música.
+    """
+    prompt_lower = prompt.lower()
+    music_keywords = ["pon", "reproduce", "música", "canción", "playlist", "suena", "toca", "play"]
+    for keyword in music_keywords:
+        if keyword in prompt_lower:
+            # Extraer la parte después de la keyword
+            index = prompt_lower.find(keyword)
+            query = prompt[index + len(keyword):].strip()
+            if query:
+                return query
+    return None
+
 
 @bot.command(
     name="ia",
     aliases=["IA", "Ia", "i"]
 )
 async def cmd_ia(ctx, *, prompt: str):
+    music_query = detect_music_request(prompt)
     async with ctx.typing():
         response = await asyncio.to_thread(
             groq_chat_response,
@@ -20,6 +37,13 @@ async def cmd_ia(ctx, *, prompt: str):
             prompt
         )
     await ctx.send(response)
+
+    if music_query:
+        # Simular el comando play
+        from infrastructure.discord.commands.music_commands import cmd_play
+        # Crear un contexto falso para el comando play
+        fake_ctx = ctx
+        await cmd_play(fake_ctx, search=music_query)
 
 
 @bot.command(

@@ -1,0 +1,5 @@
+- [x] Modify infrastructure/discord/commands/ia_commands.py to detect music requests in the prompt.
+- [x] Add logic to extract music query from the prompt.
+- [x] After AI response, if music detected, call the play logic using the extracted query.
+- [x] Import necessary functions from music_commands.py.
+- [ ] Test the integration to ensure it works.
