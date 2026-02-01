@@ -32,6 +32,7 @@ def detect_music_request(prompt: str) -> Union[str, None]:
 )
 async def cmd_ia(ctx, *, prompt: str):
     music_query = detect_music_request(prompt)
+    print(f"Debug: Prompt: {prompt}, Music query: {music_query}")  # Debug
     async with ctx.typing():
         response = await asyncio.to_thread(
             groq_chat_response,
@@ -41,6 +42,7 @@ async def cmd_ia(ctx, *, prompt: str):
     await ctx.send(response)
 
     if music_query:
+        print(f"Debug: Calling play_music with {music_query}")  # Debug
         # Llamar a la función de reproducción de música
         await play_music(ctx, music_query)
 

@@ -58,7 +58,15 @@ async def play_music(ctx, search: str):
         await ctx.send(embed=embed_warning("Falta el nombre", "Debes escribir el nombre de la canción o el link."))
         return
 
-    if not ctx.voice_client:
+    vc = ctx.voice_client
+    if vc and vc.channel.id != ctx.author.voice.channel.id:
+        await ctx.send(embed=embed_warning(
+            "Ya estoy en otro canal",
+            "Estoy en otro canal de voz. Usa #join o muéveme."
+        ))
+        return
+
+    if not vc:
         vc = await ctx.author.voice.channel.connect()
 
     queue = await ensure_queue_for_guild(ctx.guild.id)
