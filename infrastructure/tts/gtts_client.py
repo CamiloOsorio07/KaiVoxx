@@ -3,7 +3,7 @@ import os
 import asyncio
 import logging
 import uuid
-from elevenlabs import generate, set_api_key
+import requests
 import discord
 from config.settings import MAX_TTS_CHARS, ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID
 
@@ -23,13 +23,23 @@ async def speak_text_in_voice(vc: discord.VoiceClient, text: str):
 
     def _generate_audio():
         try:
-            set_api_key(ELEVENLABS_API_KEY)
-            audio = generate(
-                text=clean_text,
-                voice=ELEVENLABS_VOICE_ID,
-                model="eleven_multilingual_v2"
-            )
-            return audio
+            url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
+            headers = {
+                "Accept": "audio/mpeg",
+                "Content-Type": "application/json",
+                "xi-api-key": ELEVENLABS_API_KEY
+            }
+            data = {
+                "text": clean_text,
+                "model_id": "eleven_multilingual_v2",
+                "voice_settings": {
+                    "stability": 0.5,
+                    "similarity_boost": 0.5
+                }
+            }
+            response = requests.post(url, json=data, headers=headers)
+            response.raise_for_status()
+            return io.BytesIO(response.content)
         except Exception:
             log.exception('Error generando TTS con ElevenLabs')
             raise
