@@ -14,4 +14,4 @@ cmds = [
 ]
 
 [start]
-cmd = ". /opt/venv/bin/activate && python3 discord_multibot.py"
+cmd = ". /opt/venv/bin/activate && python3 main.py"
