@@ -1,4 +1,5 @@
 
+
 # ============================================================
 # discord_multibot.py  (Versión completa + Railway ready)
 #  - Actualizado: soporte Spotify -> busca en YouTube, SoundCloud/Deezer -> reproducen directo, fallback a búsqueda YouTube
@@ -542,75 +543,20 @@ async def ensure_queue_for_guild(guild_id: int) -> MusicQueue:
 
 async def start_playback_if_needed(guild: discord.Guild):
     vc = guild.voice_client
-    if not vc or not vc.is_connected():
-        return
-
+    if not vc or not vc.is_connected(): return
     queue = music_queues.get(guild.id)
-    if not queue or len(queue) == 0:
-        return
-
-    if vc.is_playing():
-        return
-
-    song = queue.dequeue()
-    if not song:
-        return
-
-    try:
-        source = await build_ffmpeg_source(song.url)
-    except Exception as e:
-        log.error(f"❌ Falló yt-dlp para {song.url}: {e}")
-
-        # Avisar solo una vez
+    if not queue or len(queue) == 0: return
+    if not vc.is_playing():
+        song = queue.dequeue()
+        if not song: return
         try:
-            await song.channel.send(
-                embed=embed_warning(
-                    "Canción bloqueada por YouTube",
-                    f"🚫 **{song.title}** no pudo reproducirse.\n⏭ Saltando automáticamente…"
-                )
-            )
-        except:
-            pass
-
-        # ⏭️ seguir con la siguiente canción (clave)
-        await start_playback_if_needed(guild)
-        return
-
-    def _after(err):
-        if err:
-            log.error(f"Playback error: {err}")
-        asyncio.run_coroutine_threadsafe(
-            start_playback_if_needed(guild),
-            bot.loop
-        )
-
-    vc.play(source, after=_after)
-    current_song[guild.id] = song
-    asyncio.create_task(send_now_playing_embed(song))
-
-
-
-async def add_random_song(ctx, queue: MusicQueue):
-    searches = [
-        "music mix random",
-        "rock mix",
-        "anime opening mix",
-        "electronic music mix",
-        "pop hits",
-        "lofi chill beats"
-    ]
-
-    query = random.choice(searches)
-    info = await extract_info(f"ytsearch:{query}")
-
-    if not info or not info.get("entries"):
-        return
-
-    entry = random.choice(info["entries"])
-    url = entry.get("webpage_url") or entry.get("url")
-    title = entry.get("title", "Radio Random")
-
-    queue.enqueue(Song(url, title, "Radio 🎲", ctx.channel))
+            source = await build_ffmpeg_source(song.url)
+            vc.play(source, after=lambda err: asyncio.run_coroutine_threadsafe(start_playback_if_needed(guild), bot.loop) or (log.error(f"Playback error: {err}" if err else "")))
+            current_song[guild.id] = song
+            asyncio.create_task(send_now_playing_embed(song))
+        except Exception:
+            log.exception("Error iniciando reproducción")
+            asyncio.create_task(song.channel.send("❌ Error al preparar el audio. Saltando..."))
 
 # ----------------------------
 # Bot events
@@ -818,97 +764,6 @@ async def cmd_stop(ctx):
         await ctx.send(embed=embed_error("Reproducción detenida", "🛑 Cola eliminada y música detenida."))
     else:
         await ctx.send(embed=embed_warning("Nada reproduciéndose", "No hay música sonando."))
-
-# ----------------------------
-# Random + Radio infinita
-# ----------------------------
-radio_mode: Dict[int, bool] = {}
-
-@bot.command(name="random")
-@requires_same_voice_channel_after_join()
-async def cmd_random(ctx, *, option: str = None):
-    if not ctx.author.voice or not ctx.author.voice.channel:
-        await ctx.send(embed=embed_warning(
-            "No estás en un canal de voz",
-            "Debes estar en un canal de voz para usar #random."
-        ))
-        return
-
-    if not ctx.voice_client:
-        await ctx.author.voice.channel.connect()
-
-    queue = await ensure_queue_for_guild(ctx.guild.id)
-    option = (option or "").lower().strip()
-
-    # 🎲 RANDOM DESDE LA COLA
-    if option in ("cola", "queue"):
-        if len(queue) == 0:
-            await ctx.send(embed=embed_warning(
-                "Cola vacía",
-                "No hay canciones en la cola para elegir 🎵"
-            ))
-            return
-
-        song = random.choice(list(queue._queue))
-        queue._queue.remove(song)
-        queue._queue.appendleft(song)
-
-        await ctx.send(embed=embed_music(
-            "🎲 Random desde la cola",
-            f"🎧 **{song.title}**"
-        ))
-
-        await start_playback_if_needed(ctx.guild)
-        return
-
-    # 📻 RADIO RANDOM INFINITA
-    if option in ("radio", "infinito", "infinita"):
-        radio_mode[ctx.guild.id] = True
-
-        await ctx.send(embed=embed_music(
-            "📻 Radio Random Activada",
-            "Kaivoxx pondrá música random sin parar 😈🎶"
-        ))
-
-        await add_random_song(ctx, queue)
-        await start_playback_if_needed(ctx.guild)
-        return
-
-    # 🎵 BÚSQUEDAS POR CATEGORÍA
-    searches = {
-        "rock": "rock mix",
-        "anime": "anime opening ending mix",
-        "pop": "pop hits mix",
-        "electronica": "electronic music mix",
-        "lofi": "lofi chill beats",
-        "latina": "latin hits mix",
-        "default": "music mix random"
-    }
-
-    query = searches.get(option, searches["default"])
-
-    await ctx.send(embed=embed_info(
-        "🎲 Buscando música random",
-        f"🔍 **{query}**"
-    ))
-
-    info = await extract_info(f"ytsearch:{query}")
-    if not info or not info.get("entries"):
-        await ctx.send(embed=embed_error("Error", "No encontré música 😢"))
-        return
-
-    entry = random.choice(info["entries"])
-    url = entry.get("webpage_url") or entry.get("url")
-    title = entry.get("title", "Random Song")
-
-    queue.enqueue(Song(url, title, str(ctx.author), ctx.channel))
-
-    await ctx.send(embed=embed_music(
-        "🎲 Canción random añadida",
-        f"🎧 **{title}**"
-    ))
-
-    await start_playback_if_needed(ctx.guild)
 
 # ----------------------------
 # Nueva vista y helpers para paginación de la cola
