@@ -4,7 +4,7 @@ from infrastructure.discord.views.embeds import embed_info
 
 @bot.command(
     name="help",
-    aliases=["ayuda", "commands", "comandos", "h"]
+    aliases=["ayuda", "commands", "comandos"]
 )
 async def cmd_help(ctx):
     description = (
