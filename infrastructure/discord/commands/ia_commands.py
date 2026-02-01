@@ -8,7 +8,10 @@ import asyncio
 _habla_processing = set()
 
 
-@bot.command(name="ia")
+@bot.command(
+    name="ia",
+    aliases=["IA", "Ia", "i"]
+)
 async def cmd_ia(ctx, *, prompt: str):
     async with ctx.typing():
         response = await asyncio.to_thread(
@@ -19,12 +22,14 @@ async def cmd_ia(ctx, *, prompt: str):
     await ctx.send(response)
 
 
-@bot.command(name="habla")
+@bot.command(
+    name="habla",
+    aliases=["Habla", "HABLA", "h", "voz", "Voz", "tts", "TTS"]
+)
 async def cmd_habla(ctx, *, prompt: str = None):
     from infrastructure.tts.gtts_client import speak_text_in_voice
     from infrastructure.discord.views.embeds import embed_success, embed_warning
 
-    # Evitar doble ejecución del mismo mensaje
     if ctx.message.id in _habla_processing:
         return
     _habla_processing.add(ctx.message.id)
@@ -70,8 +75,6 @@ async def cmd_habla(ctx, *, prompt: str = None):
                     )
                 )
             except Exception:
-                import logging
-                logging.exception("No pude unirme al canal desde cmd_habla")
                 await ctx.send(
                     embed=embed_warning(
                         "No pude unirme",
@@ -97,11 +100,13 @@ async def cmd_habla(ctx, *, prompt: str = None):
             )
 
     finally:
-        # Liberar bloqueo
         _habla_processing.discard(ctx.message.id)
 
 
-@bot.command(name="limpiar_ia")
+@bot.command(
+    name="limpiar_ia",
+    aliases=["limpiarIA", "clear_ia", "cia"]
+)
 async def cmd_limpiar_ia(ctx):
     key = f"chan_{ctx.channel.id}"
     from infrastructure.ia.groq_client import conversation_history
@@ -113,13 +118,19 @@ async def cmd_limpiar_ia(ctx):
         await ctx.send("ℹ️ No había memoria previa en este canal.")
 
 
-@bot.command(name="personalidad")
+@bot.command(
+    name="personalidad",
+    aliases=["perso", "persona", "whoami", "info"]
+)
 async def cmd_personalidad(ctx):
     from config.settings import SYSTEM_PROMPT
     await ctx.send(embed=embed_info("¿Quién es Kaivoxx?", SYSTEM_PROMPT))
 
 
-@bot.command(name="resumen")
+@bot.command(
+    name="resumen",
+    aliases=["res", "sum", "tl", "tl;dr"]
+)
 async def cmd_resumen(ctx, *, texto: str = None):
     if not texto:
         await ctx.send("✂️ Dame un texto para resumir.")
