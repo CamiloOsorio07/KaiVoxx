@@ -4,7 +4,7 @@ from integration.queue_shim import music_queues
 from infrastructure.discord.views.embeds import embed_info
 import asyncio
 
-# 🔒 Protección contra doble ejecución
+# Protección contra doble ejecución
 _habla_processing = set()
 
 
@@ -24,7 +24,7 @@ async def cmd_habla(ctx, *, prompt: str = None):
     from infrastructure.tts.gtts_client import speak_text_in_voice
     from infrastructure.discord.views.embeds import embed_success, embed_warning
 
-    # 🔒 Evitar doble ejecución del mismo mensaje
+    # Evitar doble ejecución del mismo mensaje
     if ctx.message.id in _habla_processing:
         return
     _habla_processing.add(ctx.message.id)
@@ -97,7 +97,7 @@ async def cmd_habla(ctx, *, prompt: str = None):
             )
 
     finally:
-        # 🔓 Liberar bloqueo
+        # Liberar bloqueo
         _habla_processing.discard(ctx.message.id)
 
 

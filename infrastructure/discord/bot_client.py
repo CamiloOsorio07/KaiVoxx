@@ -84,7 +84,6 @@ async def on_message(message: discord.Message):
                 ok = await speak_text_in_voice(vc, response) if 'speak_text_in_voice' in globals() else await __import__('infrastructure.tts.gtts_client', fromlist=['speak_text_in_voice']).speak_text_in_voice(vc, response)
                 if not ok:
                     await message.channel.send("⚠️ No pude reproducir la voz. Comprueba permisos y que ffmpeg esté disponible.")
-    await bot.process_commands(message)
 
 def create_bot():
     # import commands to register them
