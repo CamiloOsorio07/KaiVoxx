@@ -24,7 +24,7 @@ async def speak_text_in_voice(vc: discord.VoiceClient, text: str):
     def _generate_audio():
         buf = io.BytesIO()
         try:
-            gTTS(text=clean_text, lang=TTS_LANGUAGE, slow=True).write_to_fp(buf)
+            gTTS(text=clean_text, lang=TTS_LANGUAGE, slow=False).write_to_fp(buf)
             buf.seek(0)
             return buf
         except Exception:
