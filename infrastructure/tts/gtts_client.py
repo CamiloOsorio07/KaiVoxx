@@ -23,47 +23,63 @@ async def speak_text_in_voice(vc: discord.VoiceClient, text: str):
 
     def _generate_audio():
         buf = io.BytesIO()
-        gTTS(text=clean_text, lang=TTS_LANGUAGE, slow=False).write_to_fp(buf)
-        buf.seek(0)
-        return buf
+        try:
+            gTTS(text=clean_text, lang=TTS_LANGUAGE, slow=False).write_to_fp(buf)
+            buf.seek(0)
+            return buf
+        except Exception:
+            log.exception('Error generando TTS')
+            raise
 
     try:
         audio_buf = await asyncio.to_thread(_generate_audio)
     except Exception:
-        log.exception("Error generando TTS")
         return False
 
+    # nombre temporal único para evitar colisiones si hay TTS concurrentes
     temp_path = f"tts_{vc.guild.id}_{uuid.uuid4().hex}.mp3"
-    music_was_playing = vc.is_playing()
 
     try:
-        with open(temp_path, "wb") as f:
+        with open(temp_path, 'wb') as f:
             f.write(audio_buf.read())
 
-        # 🔸 Pausar música si está sonando
-        if music_was_playing:
-            vc.pause()
-            await asyncio.sleep(0.2)  # pequeño buffer de seguridad
+        # Si hay reproducción activa, detenemos la fuente actual y aguardamos que termine.
+        if vc.is_playing():
+            try:
+                vc.stop()
+            except Exception:
+                log.exception('No se pudo detener la reproducción previa')
+            # esperar un corto tiempo a que el ffmpeg/proceso termine y vc deje de reportar playing
+            for _ in range(30):  # hasta ~3 segundos
+                if not vc.is_playing():
+                    break
+                await asyncio.sleep(0.1)
+            else:
+                log.warning("La reproducción previa no terminó tras stop(); procedo de todos modos")
 
-        def _after_tts(err):
+        # función clara para el callback after
+        def _after_play(err):
             if err:
                 log.exception(f"TTS playback error: {err}")
-
             try:
                 if os.path.exists(temp_path):
                     os.remove(temp_path)
             except Exception:
-                log.exception("No se pudo borrar el archivo TTS")
-
-            # 🔸 Reanudar música si estaba sonando
-            if music_was_playing and vc.is_connected():
-                try:
-                    vc.resume()
-                except Exception:
-                    log.exception("No se pudo reanudar la música tras TTS")
+                log.exception("No se pudo borrar el archivo TTS tras reproducción")
 
         source = discord.FFmpegOpusAudio(temp_path)
-        vc.play(source, after=_after_tts)
+
+        try:
+            vc.play(source, after=_after_play)
+        except Exception:
+            # puede ocurrir Already playing audio si la voz no terminó de limpiarse
+            log.exception("Error al iniciar la reproducción del TTS (vc.play)")
+            try:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+            except Exception:
+                pass
+            return False
 
         while vc.is_playing() or vc.is_paused():
             await asyncio.sleep(0.1)
@@ -71,7 +87,7 @@ async def speak_text_in_voice(vc: discord.VoiceClient, text: str):
         return True
 
     except Exception:
-        log.exception("Error reproduciendo TTS")
+        log.exception('Error reproduciendo TTS')
         try:
             if os.path.exists(temp_path):
                 os.remove(temp_path)
