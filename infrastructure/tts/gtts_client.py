@@ -40,6 +40,18 @@ async def speak_text_in_voice(vc: discord.VoiceClient, text: str):
             response = requests.post(url, json=data, headers=headers)
             response.raise_for_status()
             return io.BytesIO(response.content)
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 400:
+                log.error(f'Vez ID inválida o no accesible: {ELEVENLABS_VOICE_ID}. Usando voz por defecto.')
+                # Fallback a voz por defecto
+                fallback_voice_id = "21m00Tcm4TlvDq8ikWAM"  # Rachel
+                url = f"https://api.elevenlabs.io/v1/text-to-speech/{fallback_voice_id}"
+                response = requests.post(url, json=data, headers=headers)
+                response.raise_for_status()
+                return io.BytesIO(response.content)
+            else:
+                log.exception('Error HTTP generando TTS con ElevenLabs')
+                raise
         except Exception:
             log.exception('Error generando TTS con ElevenLabs')
             raise
