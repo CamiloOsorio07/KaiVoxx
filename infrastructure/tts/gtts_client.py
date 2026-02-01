@@ -10,44 +10,54 @@ from config.settings import MAX_TTS_CHARS, TTS_LANGUAGE
 log = logging.getLogger('kaivoxx.tts')
 
 
-def _temp_tts_path(guild_id: int) -> str:
-    return f"tts_{guild_id}_{uuid.uuid4().hex}.mp3"
-
-
-async def speak_text_in_voice(vc: discord.VoiceClient, text: str) -> bool:
+async def speak_text_in_voice(vc: discord.VoiceClient, text: str):
     if not vc or not vc.is_connected():
         log.warning("speak_text_in_voice: VoiceClient no conectado")
         return False
 
     if len(text) > MAX_TTS_CHARS:
-        log.info("Texto demasiado largo para TTS")
+        log.info("Texto demasiado largo para TTS, no se leerá por voz.")
         return False
 
     clean_text = text.replace("*", "").replace("_", "").replace("`", "")
 
     def _generate_audio():
         buf = io.BytesIO()
-        gTTS(text=clean_text, lang=TTS_LANGUAGE, slow=False).write_to_fp(buf)
-        buf.seek(0)
-        return buf
+        try:
+            gTTS(text=clean_text, lang=TTS_LANGUAGE, slow=False).write_to_fp(buf)
+            buf.seek(0)
+            return buf
+        except Exception:
+            log.exception('Error generando TTS')
+            raise
 
     try:
         audio_buf = await asyncio.to_thread(_generate_audio)
     except Exception:
-        log.exception("Error generando TTS")
         return False
 
-    temp_path = _temp_tts_path(vc.guild.id)
-    was_playing_music = vc.is_playing()
+    # nombre temporal único para evitar colisiones si hay TTS concurrentes
+    temp_path = f"tts_{vc.guild.id}_{uuid.uuid4().hex}.mp3"
 
     try:
-        with open(temp_path, "wb") as f:
+        with open(temp_path, 'wb') as f:
             f.write(audio_buf.read())
 
-        # Pausar música si está sonando
-        if was_playing_music:
-            vc.pause()
+        # Si hay reproducción activa, detenemos la fuente actual y aguardamos que termine.
+        if vc.is_playing():
+            try:
+                vc.stop()
+            except Exception:
+                log.exception('No se pudo detener la reproducción previa')
+            # esperar un corto tiempo a que el ffmpeg/proceso termine y vc deje de reportar playing
+            for _ in range(30):  # hasta ~3 segundos
+                if not vc.is_playing():
+                    break
+                await asyncio.sleep(0.1)
+            else:
+                log.warning("La reproducción previa no terminó tras stop(); procedo de todos modos")
 
+        # función clara para el callback after
         def _after_play(err):
             if err:
                 log.exception(f"TTS playback error: {err}")
@@ -55,16 +65,21 @@ async def speak_text_in_voice(vc: discord.VoiceClient, text: str) -> bool:
                 if os.path.exists(temp_path):
                     os.remove(temp_path)
             except Exception:
-                log.exception("No se pudo borrar el archivo TTS")
+                log.exception("No se pudo borrar el archivo TTS tras reproducción")
 
-            # Reanudar música
-            if was_playing_music and vc.is_connected():
-                try:
-                    vc.resume()
-                except Exception:
-                    log.exception("No se pudo reanudar la música")
+        source = discord.FFmpegOpusAudio(temp_path)
 
-        vc.play(discord.FFmpegOpusAudio(temp_path), after=_after_play)
+        try:
+            vc.play(source, after=_after_play)
+        except Exception:
+            # puede ocurrir Already playing audio si la voz no terminó de limpiarse
+            log.exception("Error al iniciar la reproducción del TTS (vc.play)")
+            try:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+            except Exception:
+                pass
+            return False
 
         while vc.is_playing() or vc.is_paused():
             await asyncio.sleep(0.1)
@@ -72,7 +87,7 @@ async def speak_text_in_voice(vc: discord.VoiceClient, text: str) -> bool:
         return True
 
     except Exception:
-        log.exception("Error reproduciendo TTS")
+        log.exception('Error reproduciendo TTS')
         try:
             if os.path.exists(temp_path):
                 os.remove(temp_path)
