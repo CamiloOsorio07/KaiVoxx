@@ -3,7 +3,7 @@ import os
 import asyncio
 import logging
 import uuid
-from elevenlabs import ElevenLabs
+from elevenlabs import generate, set_api_key
 import discord
 from config.settings import MAX_TTS_CHARS, ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID
 
@@ -23,8 +23,8 @@ async def speak_text_in_voice(vc: discord.VoiceClient, text: str):
 
     def _generate_audio():
         try:
-            client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
-            audio = client.generate(
+            set_api_key(ELEVENLABS_API_KEY)
+            audio = generate(
                 text=clean_text,
                 voice=ELEVENLABS_VOICE_ID,
                 model="eleven_multilingual_v2"
