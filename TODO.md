@@ -2,4 +2,8 @@
 - [x] Add logic to extract music query from the prompt.
 - [x] After AI response, if music detected, call the play logic using the extracted query.
 - [x] Import necessary functions from music_commands.py.
+- [x] Fix the import and call to cmd_play.
+- [x] Create a separate play_music function without decorators.
+- [x] Update the call to use play_music.
+- [x] Compile and check for syntax errors.
 - [ ] Test the integration to ensure it works.

@@ -2,12 +2,14 @@ from infrastructure.discord.bot_client import bot
 from infrastructure.ia.groq_client import groq_chat_response
 from integration.queue_shim import music_queues
 from infrastructure.discord.views.embeds import embed_info
+from infrastructure.discord.commands.music_commands import play_music
+from typing import Union
 import asyncio
 
 # Protección contra doble ejecución
 _habla_processing = set()
 
-def detect_music_request(prompt: str) -> str or None:
+def detect_music_request(prompt: str) -> Union[str, None]:
     """
     Detecta si el prompt es una solicitud de música y extrae la query.
     Retorna la query de música o None si no es una solicitud de música.
@@ -39,11 +41,8 @@ async def cmd_ia(ctx, *, prompt: str):
     await ctx.send(response)
 
     if music_query:
-        # Simular el comando play
-        from infrastructure.discord.commands.music_commands import cmd_play
-        # Crear un contexto falso para el comando play
-        fake_ctx = ctx
-        await cmd_play(fake_ctx, search=music_query)
+        # Llamar a la función de reproducción de música
+        await play_music(ctx, music_query)
 
 
 @bot.command(

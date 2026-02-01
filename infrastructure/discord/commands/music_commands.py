@@ -46,6 +46,51 @@ async def cmd_leave(ctx):
     else:
         await ctx.send(embed=embed_warning("No estoy conectada", "No estoy en ningún canal de voz."))
 
+async def play_music(ctx, search: str):
+    if not ctx.author.voice or not ctx.author.voice.channel:
+        await ctx.send(embed=embed_warning(
+            "No estás en un canal de voz",
+            "Debes unirte a un canal de voz antes de usar #play."
+        ))
+        return
+
+    if not search:
+        await ctx.send(embed=embed_warning("Falta el nombre", "Debes escribir el nombre de la canción o el link."))
+        return
+
+    if not ctx.voice_client:
+        vc = await ctx.author.voice.channel.connect()
+
+    queue = await ensure_queue_for_guild(ctx.guild.id)
+    await ctx.send(embed=embed_info("Buscando en YouTube…", f"🔍 **{search}**"))
+
+    info = await extract_info(search if (search.startswith('http://') or search.startswith('https://') or search.startswith('spotify:')) else f"ytsearch:{search}")
+    songs_added = 0
+
+    if isinstance(info, dict) and 'entries' in info and info['entries']:
+        for count, entry in enumerate(info['entries']):
+            if count >= 200: break
+            url = entry.get('webpage_url') or entry.get('url')
+            title = entry.get('title', 'Unknown title')
+            if queue.enqueue(Song(url, title, str(ctx.author), ctx.channel)):
+                songs_added += 1
+        await ctx.send(embed=embed_music(
+            "Playlist / Mix añadido",
+            f"🎶 Se añadieron **{songs_added} canciones** (máximo 200).\n📂 Cola actual: **{len(queue)}** / {queue.limit}"
+        ))
+    else:
+        url = info.get('webpage_url') or info.get('url')
+        title = info.get('title', 'Unknown title')
+        if queue.enqueue(Song(url, title, str(ctx.author), ctx.channel)):
+            songs_added = 1
+        await ctx.send(embed=embed_music(
+            "Canción añadida",
+            f"🎧 Ahora en cola: **{title}**\n📂 Posición: **{len(queue)}**"
+        ))
+
+    # start playback
+    await start_playback_if_needed(ctx.guild)
+
 @bot.command(name="play", aliases=["p", "P", "Play", "PLAY"])
 @requires_same_voice_channel_after_join()
 async def cmd_play(ctx, *, search: str):
