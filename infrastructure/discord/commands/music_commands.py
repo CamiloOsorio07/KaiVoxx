@@ -6,6 +6,7 @@ from infrastructure.discord.views.now_playing import send_now_playing_embed
 from config.settings import BOT_PREFIX, MAX_QUEUE_LENGTH
 from domain.entities.song import Song
 import asyncio
+import discord
 
 # Decorator (copiado)
 from discord.ext import commands
