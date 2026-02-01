@@ -36,7 +36,7 @@ async def cmd_join(ctx):
     else:
         await ctx.send(embed=embed_warning("No estás en un canal", "Debes unirte primero a un canal de voz."))
 
-@bot.command(name="leave", aliases=["l", "L", "leave", "Leave", "LEAVE"])
+@bot.command(name="leave", aliases=["l", "L", "Leave", "LEAVE"])
 async def cmd_leave(ctx):
     if ctx.voice_client:
         await ctx.voice_client.disconnect()
@@ -46,7 +46,7 @@ async def cmd_leave(ctx):
     else:
         await ctx.send(embed=embed_warning("No estoy conectada", "No estoy en ningún canal de voz."))
 
-@bot.command(name="play", aliases=["p", "P", "play", "Play", "PLAY"])
+@bot.command(name="play", aliases=["p", "P", "Play", "PLAY"])
 @requires_same_voice_channel_after_join()
 async def cmd_play(ctx, *, search: str):
     if not ctx.author.voice or not ctx.author.voice.channel:
@@ -112,7 +112,7 @@ async def start_playback_if_needed(guild: 'discord.Guild'):
             import logging; logging.exception("Error iniciando reproducción")
             asyncio.create_task(song.channel.send("❌ Error al preparar el audio. Saltando..."))
 
-@bot.command(name="skip", aliases=["sk", "SK", "skip", "Skip", "next", "Next"])
+@bot.command(name="skip", aliases=["sk", "SK", "Skip", "next", "Next"])
 @requires_same_voice_channel_after_join()
 async def cmd_skip(ctx):
     vc = ctx.voice_client
@@ -122,7 +122,7 @@ async def cmd_skip(ctx):
     else:
         await ctx.send(embed=embed_warning("Nada reproduciéndose", "No hay ninguna canción sonando."))
 
-@bot.command(name="stop", aliases=["s", "S", "stop", "Stop","STOP", "st", "ST"])
+@bot.command(name="stop", aliases=["s", "S", "Stop","STOP", "st", "ST"])
 @requires_same_voice_channel_after_join()
 async def cmd_stop(ctx):
     vc = ctx.voice_client
@@ -134,7 +134,7 @@ async def cmd_stop(ctx):
     else:
         await ctx.send(embed=embed_warning("Nada reproduciéndose", "No hay música sonando."))
 
-@bot.command(name="queue", aliases=["q", "Q", "queue", "Queue", "QUEUE"])
+@bot.command(name="queue", aliases=["q", "Q", "Queue", "QUEUE"])
 @requires_same_voice_channel_after_join()
 async def cmd_queue(ctx):
     queue = music_queues.get(ctx.guild.id)
@@ -153,7 +153,7 @@ async def cmd_queue(ctx):
     embed = build_queue_embed(queue, 0)
     await ctx.send(embed=embed, view=view)
 
-@bot.command(name="now", aliases=["np", "NP", "now", "Now", "NOW"])
+@bot.command(name="now", aliases=["np", "NP", "Now", "NOW"])
 @requires_same_voice_channel_after_join()
 async def cmd_now(ctx):
     song = getattr(bot, '_current_song', {}).get(ctx.guild.id)
