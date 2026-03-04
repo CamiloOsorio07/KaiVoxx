@@ -4,13 +4,14 @@ Handles connection to external Lavalink server for audio playback.
 """
 import logging
 import wavelink
+from wavelink import Node, NodePool
 from config.settings import LAVALINK_HOST, LAVALINK_PORT, LAVALINK_PASSWORD, LAVALINK_USE_SSL
 
 log = logging.getLogger('kaivoxx.lavalink')
 
 
 # Global node reference
-_node = None
+_node: Node = None
 
 
 async def init_lavalink(bot):
@@ -19,15 +20,15 @@ async def init_lavalink(bot):
     
     try:
         # Create node configuration
-        node = wavelink.Node(
+        node = Node(
             uri=f"{'https' if LAVALINK_USE_SSL else 'http'}://{LAVALINK_HOST}:{LAVALINK_PORT}",
             password=LAVALINK_PASSWORD,
             secure=LAVALINK_USE_SSL,
             name="kaivoxx-main"
         )
         
-        # Connect the node using Pool
-        await wavelink.Pool.connect(node=node, client=bot)
+        # Connect the node
+        await NodePool.connect(node=node, client=bot)
         _node = node
         log.info(f"Conectado a Lavalink: {LAVALINK_HOST}:{LAVALINK_PORT}")
         
@@ -47,6 +48,6 @@ async def close_lavalink():
         log.info("Conexión Lavalink cerrada")
 
 
-def get_node():
+def get_node() -> Node:
     """Get the current node."""
     return _node

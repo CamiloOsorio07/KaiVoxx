@@ -5,6 +5,7 @@ from infrastructure.discord.views.now_playing import send_now_playing_embed
 from config.settings import BOT_PREFIX, MAX_QUEUE_LENGTH
 from domain.entities.song import Song
 import wavelink
+from wavelink import Player, Track
 import asyncio
 import discord
 
@@ -36,9 +37,9 @@ async def cmd_join(ctx):
             await ctx.send(embed=embed_info("Ya estoy aquí", f"Ya estoy conectada en **{channel.name}** ✨"))
             return
         
-        # Connect using Wavelink Player
+        # Connect using Wavelink
         try:
-            player = await channel.connect(cls=wavelink.Player)
+            player = await channel.connect(cls=Player)
             await ctx.send(embed=embed_success("Conectada al canal", f"Me uní a **{channel.name}** 🎧"))
         except Exception as e:
             await ctx.send(embed=embed_warning("Error de conexión", f"No pude unirme: {e}"))
@@ -74,7 +75,7 @@ async def play_music(ctx, search: str):
     # Get or create player
     player = ctx.voice_client
     if player is None:
-        player = await ctx.author.voice.channel.connect(cls=wavelink.Player)
+        player = await ctx.author.voice.channel.connect(cls=Player)
     
     if player.channel.id != ctx.author.voice.channel.id:
         await ctx.send(embed=embed_warning(
@@ -220,14 +221,14 @@ async def cmd_now(ctx):
 
 
 @bot.event
-async def on_wavelink_track_end(player: wavelink.Player, track, reason: str):
+async def on_wavelink_track_end(player: Player, track: Track, reason: str):
     """Handle track end event."""
     guild = player.guild
     asyncio.create_task(start_playback_if_needed(guild))
 
 
 @bot.event
-async def on_wavelink_track_exception(player: wavelink.Player, track, error: Exception):
+async def on_wavelink_track_exception(player: Player, track: Track, error: Exception):
     """Handle track exception."""
     import logging
     logging.error(f"Track exception: {error}")
