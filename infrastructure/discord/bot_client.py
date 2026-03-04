@@ -47,50 +47,50 @@ async def on_message(message: discord.Message):
         content = content[len(f"{BOT_PREFIX}ia"):].strip()
     if is_habla and content.startswith(f"{BOT_PREFIX}habla"):
         content = content[len(f"{BOT_PREFIX}habla"):].strip()
-    handled = False
-    if is_ia or is_habla or is_mention_direct:
-        handled = True
-        prompt = content.strip()
-        if not prompt:
-            await message.channel.send("💜 Dime qué quieres que responda.")
-            return
-        async with message.channel.typing():
-            from infrastructure.ia.groq_client import groq_chat_response
-            response = await __import__('asyncio').to_thread(groq_chat_response, f"chan_{message.channel.id}", prompt)
-        await message.channel.send(response)
-        # habla por voz si corresponde
-        if (is_habla or False) and message.guild and len(response) <= 180:
-            author_voice = message.author.voice
-            vc = message.guild.voice_client
-            from infrastructure.tts.gtts_client import speak_text_in_voice
-            from infrastructure.discord.views.embeds import embed_success, embed_warning
-            if not author_voice or not author_voice.channel:
-                await message.channel.send("💜 Para que hable, debes estar en un canal de voz y usar `#habla` o mencionar y decir 'habla'.")
-            else:
-                user_channel = author_voice.channel
-                if not vc:
-                    try:
-                        vc = await user_channel.connect()
-                        await message.channel.send(embed=embed_success("Conectada al canal", f"Me uní a **{user_channel.name}** para hablar 🎤"))
-                    except Exception:
-                        log.exception('No pude unirme al canal de voz')
-                        await message.channel.send(embed=embed_warning("No pude unirme", "No tengo permisos para unirme al canal de voz o ocurrió un error."))
-                        return
-                if vc.channel.id != user_channel.id:
-                    await message.channel.send(embed=embed_warning("Ya estoy en otro canal", "Estoy en otro canal de voz. Pide que me unan al mismo canal o usa `#join`."))
-                else:
-                    ok = await speak_text_in_voice(vc, response) if 'speak_text_in_voice' in globals() else await __import__('infrastructure.tts.gtts_client', fromlist=['speak_text_in_voice']).speak_text_in_voice(vc, response)
-                    if not ok:
-                        await message.channel.send("⚠️ No pude reproducir la voz. Comprueba permisos y que ffmpeg esté disponible.")
-    if not handled:
+    if not (is_ia or is_habla or is_mention_direct):
         await bot.process_commands(message)
+        return
+    prompt = content.strip()
+    if not prompt:
+        await message.channel.send("💜 Dime qué quieres que responda.")
+        await bot.process_commands(message)
+        return
+    async with message.channel.typing():
+        from infrastructure.ia.groq_client import groq_chat_response
+        response = await __import__('asyncio').to_thread(groq_chat_response, f"chan_{message.channel.id}", prompt)
+    await message.channel.send(response)
+    # habla por voz si corresponde
+    if (is_habla or False) and message.guild and len(response) <= 180:
+        author_voice = message.author.voice
+        vc = message.guild.voice_client
+        from infrastructure.tts.gtts_client import speak_text_in_voice
+        from infrastructure.discord.views.embeds import embed_success, embed_warning
+        if not author_voice or not author_voice.channel:
+            await message.channel.send("💜 Para que hable, debes estar en un canal de voz y usar `#habla` o mencionar y decir 'habla'.")
+        else:
+            user_channel = author_voice.channel
+            if not vc:
+                try:
+                    vc = await user_channel.connect()
+                    await message.channel.send(embed=embed_success("Conectada al canal", f"Me uní a **{user_channel.name}** para hablar 🎤"))
+                except Exception:
+                    log.exception('No pude unirme al canal de voz')
+                    await message.channel.send(embed=embed_warning("No pude unirme", "No tengo permisos para unirme al canal de voz o ocurrió un error."))
+                    await bot.process_commands(message)
+                    return
+            if vc.channel.id != user_channel.id:
+                await message.channel.send(embed=embed_warning("Ya estoy en otro canal", "Estoy en otro canal de voz. Pide que me unan al mismo canal o usa `#join`."))
+            else:
+                ok = await speak_text_in_voice(vc, response) if 'speak_text_in_voice' in globals() else await __import__('infrastructure.tts.gtts_client', fromlist=['speak_text_in_voice']).speak_text_in_voice(vc, response)
+                if not ok:
+                    await message.channel.send("⚠️ No pude reproducir la voz. Comprueba permisos y que ffmpeg esté disponible.")
+    await bot.process_commands(message)
 
 def create_bot():
     # import commands to register them
     try:
         import infrastructure.discord.commands.music_commands as _mc
         import infrastructure.discord.commands.ia_commands as _ia
-        import infrastructure.discord.commands.help_command as _hc
         # views are imported on demand
     except Exception as e:
         logging.exception('Error importing commands: %s', e)

@@ -1,17 +1,17 @@
-[build]
-builder = "Nixpacks"
+[phases.setup]
+nixPkgs = [
+  "python312",
+  "ffmpeg",
+  "libopus",
+  "libogg"
+]
 
-[build.nixpacks]
-pkgs = [
-    "ffmpeg",
-    "python3",
-    "pip",
-    "cargo",
-    "rust",
-    "gcc",
-    "libsodium-dev",
-    "pkg-config"
+[phases.install]
+cmds = [
+  "python3 -m venv /opt/venv",
+  ". /opt/venv/bin/activate && pip install --upgrade pip",
+  ". /opt/venv/bin/activate && pip install -r requirements.txt"
 ]
 
 [start]
-cmd = "pip install --upgrade PyNaCl && python3 main.py"
+cmd = ". /opt/venv/bin/activate && python3 main.py"

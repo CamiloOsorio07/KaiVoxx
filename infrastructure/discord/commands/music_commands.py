@@ -6,7 +6,6 @@ from infrastructure.discord.views.now_playing import send_now_playing_embed
 from config.settings import BOT_PREFIX, MAX_QUEUE_LENGTH
 from domain.entities.song import Song
 import asyncio
-import discord
 
 # Decorator (copiado)
 from discord.ext import commands
@@ -24,7 +23,7 @@ def requires_same_voice_channel_after_join():
         return True
     return commands.check(predicate)
 
-@bot.command(name="join", aliases=["j", "J", "JOIN", "Join"])
+@bot.command(name="join")
 async def cmd_join(ctx):
     if ctx.author.voice and ctx.author.voice.channel:
         channel = ctx.author.voice.channel
@@ -36,7 +35,7 @@ async def cmd_join(ctx):
     else:
         await ctx.send(embed=embed_warning("No estás en un canal", "Debes unirte primero a un canal de voz."))
 
-@bot.command(name="leave", aliases=["l", "L", "Leave", "LEAVE"])
+@bot.command(name="leave")
 async def cmd_leave(ctx):
     if ctx.voice_client:
         await ctx.voice_client.disconnect()
@@ -46,112 +45,73 @@ async def cmd_leave(ctx):
     else:
         await ctx.send(embed=embed_warning("No estoy conectada", "No estoy en ningún canal de voz."))
 
-async def play_music(ctx, search: str):
-    if not ctx.author.voice or not ctx.author.voice.channel:
-        await ctx.send(embed=embed_warning("No estás en un canal de voz", "Únete a un canal de voz primero."))
-        return
-
-    # ensure queue
-    queue = await ensure_queue_for_guild(ctx.guild.id)
-    if len(queue) >= MAX_QUEUE_LENGTH:
-        await ctx.send(embed=embed_warning("Cola llena", f"La cola ya tiene el máximo de {MAX_QUEUE_LENGTH} canciones."))
-        return
-
-    await ctx.send(embed=embed_info("Buscando…", f"🔍 Buscando **{search}** en YouTube..."))
-
-    # download
-    try:
-        info = await extract_info(search)
-        if not info:
-            await ctx.send(embed=embed_warning("Sin resultados", "No se encontró nada para esa búsqueda."))
-            return
-
-        # Get URL from info - handle both direct URLs and search results
-        video_url = info.get('url')
-        if not video_url:
-            # For search results, get from entries
-            entries = info.get('entries', [])
-            if entries:
-                video_url = entries[0].get('url')
-            else:
-                await ctx.send(embed=embed_warning("Error", "No se pudo obtener la URL del video."))
-                return
-        
-        # Get title
-        title = info.get('title', 'Unknown')
-        if not title and 'entries' in info and info['entries']:
-            title = info['entries'][0].get('title', 'Unknown')
-
-        # Create Song entity
-        song = Song(
-            url=video_url,
-            title=title,
-            requester_name=str(ctx.author),
-            requester_channel=ctx.channel
-        )
-
-        queue.enqueue(song)
-        await ctx.send(embed=embed_music("Añadido a la cola", f"🎶 **{song.title}**\n📂 Posición: **{len(queue)}**"))
-
-    except Exception as e:
-        import logging
-        logging.exception("Error extrayendo info")
-        await ctx.send(embed=embed_warning("Error", f"Error al buscar: {e}"))
-        return
-
-    # start playback if not playing
-    if not ctx.voice_client or not ctx.voice_client.is_playing():
-        await start_playback(ctx)
-
-@bot.command(name="play", aliases=["p", "P", "Play", "PLAY"])
+@bot.command(name="play")
 @requires_same_voice_channel_after_join()
 async def cmd_play(ctx, *, search: str):
-    await play_music(ctx, search)
-
-
-async def start_playback(ctx: commands.Context):
-    """Iniciar la reproducción de audio."""
-    vc = ctx.voice_client
-    if not vc:
+    if not ctx.author.voice or not ctx.author.voice.channel:
+        await ctx.send(embed=embed_warning(
+            "No estás en un canal de voz",
+            "Debes unirte a un canal de voz antes de usar #play."
+        ))
         return
 
-    queue = music_queues.get(ctx.guild.id)
-    if not queue or len(queue) == 0:
+    if not search:
+        await ctx.send(embed=embed_warning("Falta el nombre", "Debes escribir el nombre de la canción o el link."))
         return
 
-    if vc.is_playing():
-        return
+    if not ctx.voice_client:
+        vc = await ctx.author.voice.channel.connect()
 
-    song = queue.dequeue()
-    if not song:
-        return
+    queue = await ensure_queue_for_guild(ctx.guild.id)
+    await ctx.send(embed=embed_info("Buscando en YouTube…", f"🔍 **{search}**"))
 
-    try:
-        source = await build_ffmpeg_source(song.url)
-        ffmpeg_audio = discord.FFmpegPCMAudio(song.url, **source)
+    info = await extract_info(search if (search.startswith('http://') or search.startswith('https://') or search.startswith('spotify:')) else f"ytsearch:{search}")
+    songs_added = 0
 
-        def after_playing(error):
-            if error:
-                import logging
-                logging.error(f"Error en reproducción: {error}")
-            # recursively play next
-            asyncio.run_coroutine_threadsafe(start_playback(ctx), bot.loop)
+    if isinstance(info, dict) and 'entries' in info and info['entries']:
+        for count, entry in enumerate(info['entries']):
+            if count >= 200: break
+            url = entry.get('webpage_url') or entry.get('url')
+            title = entry.get('title', 'Unknown title')
+            if queue.enqueue(Song(url, title, str(ctx.author), ctx.channel)):
+                songs_added += 1
+        await ctx.send(embed=embed_music(
+            "Playlist / Mix añadido",
+            f"🎶 Se añadieron **{songs_added} canciones** (máximo 200).\n📂 Cola actual: **{len(queue)}** / {queue.limit}"
+        ))
+    else:
+        url = info.get('webpage_url') or info.get('url')
+        title = info.get('title', 'Unknown title')
+        if queue.enqueue(Song(url, title, str(ctx.author), ctx.channel)):
+            songs_added = 1
+        await ctx.send(embed=embed_music(
+            "Canción añadida",
+            f"🎧 Ahora en cola: **{title}**\n📂 Posición: **{len(queue)}**"
+        ))
 
-        vc.play(ffmpeg_audio, after=after_playing)
+    # start playback
+    await start_playback_if_needed(ctx.guild)
 
-        # store current song
-        bot._current_song = getattr(bot, '_current_song', {})
-        bot._current_song[ctx.guild.id] = song
+async def start_playback_if_needed(guild: 'discord.Guild'):
+    vc = guild.voice_client
+    if not vc or not vc.is_connected(): return
+    queue = music_queues.get(guild.id)
+    if not queue or len(queue) == 0: return
+    if not vc.is_playing():
+        song = queue.dequeue()
+        if not song: return
+        try:
+            source = await build_ffmpeg_source(song.url)
+            vc.play(source, after=lambda err: asyncio.run_coroutine_threadsafe(start_playback_if_needed(guild), bot.loop) or (print(f"Playback error: {err}" if err else "")))
+            # store current song in a simple dict on the bot
+            bot._current_song = getattr(bot, '_current_song', {})
+            bot._current_song[guild.id] = song
+            asyncio.create_task(send_now_playing_embed(bot, song))
+        except Exception:
+            import logging; logging.exception("Error iniciando reproducción")
+            asyncio.create_task(song.channel.send("❌ Error al preparar el audio. Saltando..."))
 
-        await send_now_playing_embed(bot, song)
-
-    except Exception as e:
-        import logging
-        logging.exception("Error iniciando reproducción")
-        asyncio.create_task(song.requester_channel.send("❌ Error al preparar el audio. Saltando..."))
-        asyncio.create_task(start_playback(ctx))
-
-@bot.command(name="skip", aliases=["sk", "SK", "Skip", "next", "Next"])
+@bot.command(name="skip")
 @requires_same_voice_channel_after_join()
 async def cmd_skip(ctx):
     vc = ctx.voice_client
@@ -161,7 +121,7 @@ async def cmd_skip(ctx):
     else:
         await ctx.send(embed=embed_warning("Nada reproduciéndose", "No hay ninguna canción sonando."))
 
-@bot.command(name="stop", aliases=["s", "S", "Stop","STOP", "st", "ST"])
+@bot.command(name="stop")
 @requires_same_voice_channel_after_join()
 async def cmd_stop(ctx):
     vc = ctx.voice_client
@@ -173,7 +133,7 @@ async def cmd_stop(ctx):
     else:
         await ctx.send(embed=embed_warning("Nada reproduciéndose", "No hay música sonando."))
 
-@bot.command(name="queue", aliases=["q", "Q", "Queue", "QUEUE"])
+@bot.command(name="queue")
 @requires_same_voice_channel_after_join()
 async def cmd_queue(ctx):
     queue = music_queues.get(ctx.guild.id)
@@ -192,7 +152,7 @@ async def cmd_queue(ctx):
     embed = build_queue_embed(queue, 0)
     await ctx.send(embed=embed, view=view)
 
-@bot.command(name="now", aliases=["np", "NP", "Now", "NOW"])
+@bot.command(name="now")
 @requires_same_voice_channel_after_join()
 async def cmd_now(ctx):
     song = getattr(bot, '_current_song', {}).get(ctx.guild.id)

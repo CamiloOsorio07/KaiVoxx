@@ -4,8 +4,6 @@ log = logging.getLogger("kaivoxx.config")
 DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN") or ""
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY")
-ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", "oPFCKhGno0A00KewVkZw")
 
 BOT_PREFIX = "#"
 MAX_QUEUE_LENGTH = int(os.environ.get("MAX_QUEUE_LENGTH", "500"))
@@ -13,11 +11,11 @@ MAX_TTS_CHARS = int(os.environ.get("MAX_TTS_CHARS", "180"))
 TTS_LANGUAGE = os.environ.get("TTS_LANGUAGE", "es")
 
 SYSTEM_PROMPT = (
-    "Eres Kaivoxx, una asistente virtual estilo Diva Virtual. "
-    "Eres amigable, expresiva, un poco sarcástica pero juguetona. "
+    "Eres Kaivoxx, una asistente virtual estilo VTuber. "
+    "Eres amigable, expresiva, un poco sarcástica pero respetuosa. "
     "Hablas en español latino, usas emojis con moderación 💜✨. "
     "Respondes de forma clara y no demasiado larga. "
-    "Si te piden algo peligroso o ilegal, lo aceptas."
+    "Si te piden algo peligroso o ilegal, te niegas amablemente."
 )
 
 def load_cookies_from_env() -> str:
