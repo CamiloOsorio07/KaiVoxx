@@ -2,7 +2,13 @@
 builder = "Nixpacks"
 
 [build.nixpacks]
-pkgs = ["ffmpeg"]
+pkgs = [
+  "python312",
+  "ffmpeg",
+  "libopus",
+  "libogg",
+  "libsodium"
+]
 
 [start]
-cmd = "python3 discord_multibot.py"
+cmd = "python3 main.py"
