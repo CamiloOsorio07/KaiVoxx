@@ -1,6 +1,6 @@
 # KaiVoxx 🎧🤖
 
-KaiVoxx es un **bot de Discord** enfocado en la reproducción de música, desarrollado en **Python**, que nace como una refactorización completa de mi bot anterior (`discord_multibot.py`).
+KaiVoxx es un **bot de Discord** enfocado en la reproducción de música, desarrollado en **Python**, que nace como una refactorización completa de mi bot anterior (`BOT-KAIVOXX`).
 
 El objetivo principal de este proyecto fue **ordenar el código, hacerlo más mantenible y escalable**, sin perder ninguna de las funcionalidades que ya tenía el bot original.
 
