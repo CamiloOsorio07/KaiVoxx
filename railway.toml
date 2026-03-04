@@ -1,6 +1,23 @@
 [build]
-builder = "docker"
+builder = "Nixpacks"
 
-[deploy]
-num = 1
+[build.nixpacks]
+pkgs = [
+  "python312",
+  "ffmpeg",
+  "libopus",
+  "libogg",
+  "libsodium"
+]
+
+[phases.install]
+cmds = [
+  "python3 -m venv /opt/venv",
+  ". /opt/venv/bin/activate && pip install --upgrade pip",
+  ". /opt/venv/bin/activate && ldconfig",
+  ". /opt/venv/bin/activate && pip install -r requirements.txt"
+]
+
+[start]
+cmd = ". /opt/venv/bin/activate && ldconfig && python3 main.py"
 
