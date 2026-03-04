@@ -4,6 +4,7 @@ Handles connection to external Lavalink server for audio playback.
 """
 import logging
 import wavelink
+from wavelink.ext import spotify
 from config.settings import LAVALINK_HOST, LAVALINK_PORT, LAVALINK_PASSWORD, LAVALINK_USE_SSL
 
 log = logging.getLogger('kaivoxx.lavalink')
@@ -15,6 +16,7 @@ class LavalinkClient:
     def __init__(self, bot):
         self.bot = bot
         self.nodes = []
+        self.spotify_client = None
     
     async def initialize(self):
         """Initialize Lavalink nodes."""
@@ -54,6 +56,21 @@ async def init_lavalink(bot):
     
     # Add webhook for Wavelink events
     bot.wavelink = wavelink.Client(bot)
+    
+    # Try to get Spotify credentials from environment
+    import os
+    spotify_client_id = os.environ.get("SPOTIFY_CLIENT_ID")
+    spotify_client_secret = os.environ.get("SPOTIFY_CLIENT_SECRET")
+    
+    if spotify_client_id and spotify_client_secret:
+        # Initialize Spotify client
+        bot.wavelink.initiateSpotifyClient(
+            client_id=spotify_client_id,
+            client_secret=spotify_client_secret
+        )
+        log.info("Cliente Spotify inicializado")
+    else:
+        log.info("Spotify no configurado (SPOTIFY_CLIENT_ID y SPOTIFY_CLIENT_SECRET no encontrados)")
     
     lavalink_client = LavalinkClient(bot)
     await lavalink_client.initialize()
