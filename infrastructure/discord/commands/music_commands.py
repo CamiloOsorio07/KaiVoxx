@@ -66,10 +66,26 @@ async def play_music(ctx, search: str):
             await ctx.send(embed=embed_warning("Sin resultados", "No se encontró nada para esa búsqueda."))
             return
 
+        # Get URL from info - handle both direct URLs and search results
+        video_url = info.get('url')
+        if not video_url:
+            # For search results, get from entries
+            entries = info.get('entries', [])
+            if entries:
+                video_url = entries[0].get('url')
+            else:
+                await ctx.send(embed=embed_warning("Error", "No se pudo obtener la URL del video."))
+                return
+        
+        # Get title
+        title = info.get('title', 'Unknown')
+        if not title and 'entries' in info and info['entries']:
+            title = info['entries'][0].get('title', 'Unknown')
+
         # Create Song entity
         song = Song(
-            url=info['url'],
-            title=info.get('title', 'Unknown'),
+            url=video_url,
+            title=title,
             requester_name=str(ctx.author),
             requester_channel=ctx.channel
         )

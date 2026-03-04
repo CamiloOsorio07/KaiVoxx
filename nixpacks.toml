@@ -2,7 +2,16 @@
 builder = "Nixpacks"
 
 [build.nixpacks]
-pkgs = ["ffmpeg", "python3", "pip", "cargo", "rust", "libsodium-dev", "pkg-config"]
+pkgs = [
+    "ffmpeg",
+    "python3",
+    "pip",
+    "cargo",
+    "rust",
+    "gcc",
+    "libsodium-dev",
+    "pkg-config"
+]
 
 [start]
-cmd = "pip install PyNaCl && python3 main.py"
+cmd = "pip install --upgrade PyNaCl && python3 main.py"

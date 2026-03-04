@@ -6,5 +6,9 @@
 - Text-to-Speech (ElevenLabs)
 - Web interface
 
+## Fixes Realizados
+- [x] Arreglado error KeyError: 'url' en music_commands.py
+- [x] Actualizado nixpacks.toml para instalar dependencias de voz (gcc, libsodium-dev, pkg-config)
+
 ## Pending Tasks
-- [ ] Fix voice connection error 4006 on Railway
+- [ ] Probar el bot en Railway después del deploy
