@@ -14,6 +14,14 @@ bot = commands.Bot(command_prefix=BOT_PREFIX, intents=intents, help_command=None
 
 @bot.event
 async def on_ready():
+    # Initialize Lavalink
+    try:
+        from infrastructure.lavalink.lavalink_client import init_lavalink
+        await init_lavalink(bot)
+        log.info("Lavalink inicializado correctamente")
+    except Exception as e:
+        log.error(f"Error inicializando Lavalink: {e}")
+    
     log.info(f"Bot conectado como {bot.user}")
     activity = discord.Activity(type=discord.ActivityType.listening, name="#help 🎵 | 💜 Tu asistente musical y de IA favorita (IA en proceso)")
     await bot.change_presence(status=discord.Status.online, activity=activity)

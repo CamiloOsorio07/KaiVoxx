@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>KaiVoxx — Bot de Discord</title>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg-1:#071023; --bg-2:#0b1320; --accent-1:#7df9a6; --accent-2:#2ee7c6;
+      --muted:#9aa4b2; --card:rgba(255,255,255,0.03); --radius:14px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{font-family:Inter,system-ui,Roboto,Helvetica,Arial;margin:0;
+      background:radial-gradient(1200px 600px at 10% 10%, rgba(46,231,198,0.06), transparent),
+                 linear-gradient(180deg,var(--bg-1),var(--bg-2));
+      color:#e6eef6;min-height:100vh;padding:28px;display:flex;align-items:center;justify-content:center}
+    .wrap{width:100%;max-width:1100px}
+    .top{display:flex;gap:16px;align-items:center}
+    .avatar{width:108px;height:108px;border-radius:20px;display:flex;align-items:center;justify-content:center;overflow:hidden;
+            background:linear-gradient(135deg,var(--accent-1),var(--accent-2));box-shadow:0 12px 40px rgba(12,45,40,0.45)}
+    .avatar img{width:100%;height:100%;object-fit:cover}
+    h1{margin:0;font-size:28px}
+    .subtitle{color:var(--muted);margin-top:6px}
+    .grid{display:grid;grid-template-columns:1fr 360px;gap:22px;margin-top:18px}
+    .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border:1px solid var(--card);
+          padding:18px;border-radius:var(--radius);box-shadow:0 10px 30px rgba(2,6,12,0.6)}
+    .btn{display:inline-block;padding:10px 14px;border-radius:10px;text-decoration:none;font-weight:700}
+    .btn-primary{background:linear-gradient(90deg,var(--accent-1),var(--accent-2));color:#042}
+    .btn-ghost{border:1px solid rgba(255,255,255,0.06);color:var(--accent-1);background:transparent}
+    .features{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+    .chip{background:rgba(255,255,255,0.02);padding:8px 10px;border-radius:10px;font-size:13px;color:var(--muted)}
+    pre.code{background:rgba(0,0,0,0.2);padding:12px;border-radius:8px;overflow:auto;font-size:13px}
+    .sidebar .stat{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px dashed rgba(255,255,255,0.02)}
+    .small{font-size:13px;color:var(--muted)}
+    .controls{display:flex;gap:8px;align-items:center;margin-top:12px}
+    input[type="file"]{display:none}
+    .readme{margin-top:12px;color:#dbeaf1}
+    .readme img{max-width:100%;border-radius:8px}
+    footer{margin-top:14px;color:var(--muted);font-size:13px}
+    @media (max-width:980px){.grid{grid-template-columns:1fr}.avatar{width:88px;height:88px}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div class="avatar" id="avatarContainer" title="Icono del bot">
+        <!-- Placeholder SVG (se sustituye si hay CONFIG.botIcon) -->
+        <img id="botIcon" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><rect rx='30' width='100%' height='100%' fill='%237df9a6'/><text x='50%' y='55%' dominant-baseline='middle' text-anchor='middle' font-family='Arial' font-size='72' fill='%23021'>KV</text></svg>" alt="KaiVoxx Icon">
+      </div>
+
+      <div>
+        <h1 id="botName">KaiVoxx <span class="small">— Bot de música y utilidades</span></h1>
+        <div class="subtitle">Página oficial dinámica con invitación, estado y README integrado.</div>
+
+        <div class="controls">
+          <a id="inviteBtn" class="btn btn-primary" href="#" target="_blank">Invitar al bot</a>
+          <a id="supportBtn" class="btn btn-ghost" href="#" target="_blank">Servidor de soporte</a>
+          <label class="btn btn-ghost" for="iconFileInput" style="cursor:pointer">Cargar icono</label>
+          <input id="iconFileInput" type="file" accept="image/*">
+        </div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <main class="card">
+        <section>
+          <h2>Acerca del bot</h2>
+          <p class="small">KaiVoxx reproduce música desde plataformas, gestiona colas, tiene comandos de moderación y herramientas sociales para tu servidor Discord.</p>
+
+          <div class="features" id="featureList">
+            <div class="chip">YouTube / SoundCloud</div>
+            <div class="chip">Colas y loop</div>
+            <div class="chip">Mod tools</div>
+            <div class="chip">Slash commands</div>
+          </div>
+        </section>
+
+        <section style="margin-top:14px">
+          <h3>Comandos de ejemplo</h3>
+          <pre class="code">/play &lt;nombre o url&gt;
+/stop
+/skip
+/queue
+/pause
+/resume
+/help</pre>
+        </section>
+
+        <section id="readmeSection" style="margin-top:14px;display:none">
+          <h3>README del proyecto</h3>
+          <div id="readmeContainer" class="readme">Cargando README…</div>
+        </section>
+
+        <footer>
+          <p>¿Quieres que la lista de comandos se muestre automáticamente desde el bot (o que esta página muestre estado en tiempo real)? Puedo ayudarte a exponer un endpoint y conectar la página para mostrar estadísticas reales (online, servidores, usuarios).</p>
+        </footer>
+      </main>
+
+      <aside class="card sidebar">
+        <div style="display:flex;gap:12px;align-items:center;justify-content:space-between">
+          <div>
+            <div style="font-weight:700">Invitar KaiVoxx</div>
+            <div class="small">Añade el bot a tu servidor con permisos apropiados.</div>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+          <a id="inviteBtnSide" class="btn btn-primary" href="#" target="_blank">Invitar</a>
+          <a id="repoLink" class="btn btn-ghost" href="#" target="_blank">Ver en GitHub</a>
+        </div>
+
+        <div style="margin-top:18px;border-top:1px solid rgba(255,255,255,0.03);padding-top:12px">
+          <div class="stat"><span class="small">Estado</span><strong id="statusText">Desconocido</strong></div>
+          <div class="stat"><span class="small">Servidores</span><strong id="serversCount">—</strong></div>
+          <div class="stat"><span class="small">Usuarios</span><strong id="usersCount">—</strong></div>
+        </div>
+
+        <div style="margin-top:12px;border-top:1px solid rgba(255,255,255,0.03);padding-top:12px">
+          <div class="small">Enlaces</div>
+          <div style="margin-top:8px;display:flex;gap:8px;flex-direction:column">
+            <a id="readmeLink" class="small" href="#" target="_blank">Leer README</a>
+            <a id="supportLink" class="small" href="#" target="_blank">Soporte</a>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- marked para renderizar markdown (CDN). Si prefieres, puedes descargar el script y servirlo localmente. -->
+  <script src="https://unpkg.com/marked@5.1.1/marked.min.js"></script>
+  <script>
+    // CONFIG fallback (se sobrescribe con el endpoint /api/config cuando la web está servida desde la misma app)
+    const CONFIG = {
+      clientId: 'REPLACE_WITH_CLIENT_ID',
+      invitePermissions: '8',
+      repoUrl: 'https://github.com/CamiloOsorio07/KaiVoxx',
+      supportInvite: '#',
+      botIcon: '',
+      showReadme: true,
+      statusApi: '/api/status' // ruta relativa al servidor que sirve la web
+    };
+
+    // Si la web está servida desde la misma app en Railway, usamos ruta relativa:
+    const API_CONFIG_URL = '/api/config';
+
+    // Elementos
+    const botIconEl = document.getElementById('botIcon');
+    const inviteBtn = document.getElementById('inviteBtn');
+    const inviteBtnSide = document.getElementById('inviteBtnSide');
+    const supportBtn = document.getElementById('supportBtn');
+    const repoLink = document.getElementById('repoLink');
+    const readmeLink = document.getElementById('readmeLink');
+    const readmeSection = document.getElementById('readmeSection');
+    const readmeContainer = document.getElementById('readmeContainer');
+    const statusText = document.getElementById('statusText');
+    const serversCount = document.getElementById('serversCount');
+    const usersCount = document.getElementById('usersCount');
+    const supportLink = document.getElementById('supportLink');
+
+    function buildInviteLink(clientId, perms){
+      if(!clientId || clientId.startsWith('REPLACE')) return '#';
+      const base = 'https://discord.com/oauth2/authorize';
+      const params = new URLSearchParams({client_id: clientId, permissions: perms, scope: 'bot applications.commands'});
+      return `${base}?${params.toString()}`;
+    }
+
+    async function fetchRemoteConfig(){
+      try{
+        const r = await fetch(API_CONFIG_URL, {cache: 'no-cache'});
+        if(!r.ok) throw new Error('no config');
+        const remote = await r.json();
+        if(remote.clientId) CONFIG.clientId = remote.clientId;
+        if(remote.botIcon) CONFIG.botIcon = remote.botIcon;
+        if(remote.supportInvite) CONFIG.supportInvite = remote.supportInvite;
+        if(remote.repoUrl) CONFIG.repoUrl = remote.repoUrl;
+        console.log('CONFIG cargada desde /api/config', remote);
+      }catch(e){
+        console.warn('No se pudo cargar /api/config — usando CONFIG local', e);
+      }
+    }
+
+    // status updater: consume /api/status (ruta relativa)
+    async function updateStatus(){
+      const api = CONFIG.statusApi || '/api/status';
+      try{
+        const r = await fetch(api, {cache: 'no-cache'});
+        if(!r.ok) throw new Error('status failed');
+        const data = await r.json();
+        statusText.textContent = data.online ? 'Online' : 'Offline';
+        serversCount.textContent = data.servers ?? '—';
+        usersCount.textContent = data.users ?? '—';
+      }catch(e){
+        statusText.textContent = 'Offline (placeholder)';
+        serversCount.textContent = '—';
+        usersCount.textContent = '—';
+      }
+    }
+
+    // README loader (intenta cargar README.md desde el repo si showReadme=true)
+    function rawGithubUrl(repo){
+      return repo.replace('github.com','raw.githubusercontent.com').replace('/blob/','/');
+    }
+    async function loadReadme(){
+      if(!CONFIG.showReadme) return;
+      readmeSection.style.display = 'block';
+      readmeContainer.textContent = 'Cargando README…';
+      try{
+        const raw = rawGithubUrl(CONFIG.repoUrl) + '/main/README.md';
+        const r = await fetch(raw);
+        if(!r.ok) throw new Error('no readme');
+        const md = await r.text();
+        const safe = md.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi,'');
+        readmeContainer.innerHTML = marked.parse(safe);
+      }catch(e){
+        readmeContainer.textContent = 'No se pudo cargar el README desde GitHub. Asegúrate de que el repo sea público.';
+      }
+    }
+
+    // icon file preview
+    document.getElementById('iconFileInput').addEventListener('change', e=>{
+      const f = e.target.files[0];
+      if(!f) return;
+      const reader = new FileReader();
+      reader.onload = ()=>{ botIconEl.src = reader.result; alert('Icono cargado en vista previa. Aloja la imagen en un hosting o en el repo para uso público.'); }
+      reader.readAsDataURL(f);
+    });
+
+    // init
+    (async function init(){
+      await fetchRemoteConfig();
+
+      // apply config to UI
+      const inviteUrl = buildInviteLink(CONFIG.clientId, CONFIG.invitePermissions);
+      inviteBtn.href = inviteBtnSide.href = inviteUrl;
+      supportBtn.href = CONFIG.supportInvite || '#';
+      repoLink.href = CONFIG.repoUrl;
+      readmeLink.href = CONFIG.repoUrl + '/blob/main/README.md';
+      supportLink.href = CONFIG.supportInvite || '#';
+      if(CONFIG.botIcon) botIconEl.src = CONFIG.botIcon;
+
+      await updateStatus();
+      loadReadme();
+
+      // refrescar status cada 30 segundos
+      setInterval(updateStatus, 30_000);
+    })();
+  </script>
+</body>
+</html>
