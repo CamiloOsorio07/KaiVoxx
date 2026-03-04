@@ -1,6 +1,6 @@
 [phases.setup]
 nixPkgs = [
-  "python312",
+  "python311",
   "ffmpeg",
   "libopus",
   "libogg"
