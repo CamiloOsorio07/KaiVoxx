@@ -1,17 +1,11 @@
 import os, base64, tempfile, logging
 log = logging.getLogger("kaivoxx.config")
 
-# Lavalink Configuration
-LAVALINK_HOST = os.environ.get("LAVALINK_HOST", "lava.link")
-LAVALINK_PORT = int(os.environ.get("LAVALINK_PORT", "443"))
-LAVALINK_PASSWORD = os.environ.get("LAVALINK_PASSWORD", "youshallnotpass")
-LAVALINK_USE_SSL = os.environ.get("LAVALINK_USE_SSL", "true").lower() == "true"
-
 DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN") or ""
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY")
-ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", "oPFCKhGno0A00KewVkZw")
+ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", "oPFCKhGno0A00KewVkZw")  # Voz VTuber especificada por el usuario
 
 BOT_PREFIX = "#"
 MAX_QUEUE_LENGTH = int(os.environ.get("MAX_QUEUE_LENGTH", "500"))
