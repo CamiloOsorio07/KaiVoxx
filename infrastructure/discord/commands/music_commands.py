@@ -5,7 +5,6 @@ from infrastructure.discord.views.now_playing import send_now_playing_embed
 from config.settings import BOT_PREFIX, MAX_QUEUE_LENGTH
 from domain.entities.song import Song
 import wavelink
-from wavelink.ext import spotify
 import asyncio
 import discord
 
@@ -89,48 +88,25 @@ async def play_music(ctx, search: str):
 
     # Search and add to queue
     try:
-        # Determine if it's a Spotify URL
-        if search.startswith('spotify:'):
-            # Handle Spotify URLs
-            decoded = spotify.decode_url(search)
-            if decoded:
-                if decoded.get('type') == spotify.SpotifyType.TRACK:
-                    track = await spotify.SpotifyTrack.search(query=search, return_first=True)
-                    if queue.enqueue(Song(track.uri, track.title, str(ctx.author), ctx.channel)):
-                        await ctx.send(embed=embed_music(
-                            "Canción añadida",
-                            f"🎧 Ahora en cola: **{track.title}**\n📂 Posición: **{len(queue)}**"
-                        ))
-                elif decoded.get('type') == spotify.SpotifyType.PLAYLIST:
-                    tracks = await spotify.SpotifyPlaylist.search(query=search)
-                    songs_added = 0
-                    for track in tracks:
-                        if queue.enqueue(Song(track.uri, track.title, str(ctx.author), ctx.channel)):
-                            songs_added += 1
-                    await ctx.send(embed=embed_music(
-                        "Playlist añadida",
-                        f"🎶 Se añadieron **{songs_added} canciones**.\n📂 Cola actual: **{len(queue)}** / {queue.limit}"
-                    ))
+        # YouTube search
+        if search.startswith('http://') or search.startswith('https://'):
+            query = search
         else:
-            # YouTube search
-            if search.startswith('http://') or search.startswith('https://'):
-                query = search
-            else:
-                query = f"ytsearch:{search}"
-            
-            tracks = await wavelink.Playable.search(query)
-            
-            if not tracks:
-                await ctx.send(embed=embed_warning("Sin resultados", "No se encontraron resultados para la búsqueda."))
-                return
-            
-            # Add first result
-            track = tracks[0]
-            if queue.enqueue(Song(track.uri, track.title, str(ctx.author), ctx.channel)):
-                await ctx.send(embed=embed_music(
-                    "Canción añadida",
-                    f"🎧 Ahora en cola: **{track.title}**\n📂 Posición: **{len(queue)}**"
-                ))
+            query = f"ytsearch:{search}"
+        
+        tracks = await wavelink.Playable.search(query)
+        
+        if not tracks:
+            await ctx.send(embed=embed_warning("Sin resultados", "No se encontraron resultados para la búsqueda."))
+            return
+        
+        # Add first result
+        track = tracks[0]
+        if queue.enqueue(Song(track.uri, track.title, str(ctx.author), ctx.channel)):
+            await ctx.send(embed=embed_music(
+                "Canción añadida",
+                f"🎧 Ahora en cola: **{track.title}**\n📂 Posición: **{len(queue)}**"
+            ))
 
     except Exception as e:
         import logging
