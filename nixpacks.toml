@@ -2,6 +2,7 @@
 nixPkgs = [
   "python312",
   "ffmpeg",
+  "opus",
   "libopus",
   "libogg"
 ]
