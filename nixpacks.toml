@@ -20,4 +20,7 @@ cmds = [
 ]
 
 [start]
-cmd = ". /opt/venv/bin/activate && python3 main.py"
+cmd = "export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/venv/lib:/nix/var/nix/profiles/default/lib:/run/current-system/lib && . /opt/venv/bin/activate && python3 main.py"
+
+[variables]
+LD_LIBRARY_PATH = "/opt/venv/lib:/nix/var/nix/profiles/default/lib:/run/current-system/lib"
