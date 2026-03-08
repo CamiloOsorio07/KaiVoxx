@@ -4,13 +4,18 @@ nixPkgs = [
   "ffmpeg",
   "libopus",
   "libogg",
-  "libsodium"
+  "libsodium",
+  "openssl",
+  "gcc",
+  "python312Packages.cffi",
+  "python312Packages.pynacl"
 ]
 
 [phases.install]
 cmds = [
   "python3 -m venv /opt/venv",
   ". /opt/venv/bin/activate && pip install --upgrade pip",
+  ". /opt/venv/bin/activate && pip install --force-reinstall PyNaCl",
   ". /opt/venv/bin/activate && pip install -r requirements.txt"
 ]
 
