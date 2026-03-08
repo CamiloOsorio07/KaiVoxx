@@ -23,6 +23,11 @@ SYSTEM_PROMPT = (
 def load_cookies_from_env() -> str:
     cookies_b64 = os.getenv("YTDLP_COOKIES_BASE64")
     cookies_txt = os.getenv("YTDLP_COOKIES")
+    
+    # Debug: mostrar qué variables están disponibles
+    log.info(f"YTDLP_COOKIES_BASE64 presente: {bool(cookies_b64)}")
+    log.info(f"YTDLP_COOKIES presente: {bool(cookies_txt)}")
+    
     if not cookies_b64 and not cookies_txt:
         log.warning("No hay cookies configuradas.")
         return None
