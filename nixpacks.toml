@@ -4,9 +4,7 @@ nixPkgs = [
   "ffmpeg",
   "libopus",
   "libogg",
-  "libsodium",
-  "libnacl",
-  "pkgconfig"
+  "libsodium"
 ]
 
 [phases.install]
