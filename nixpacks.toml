@@ -3,7 +3,10 @@ nixPkgs = [
   "python312",
   "ffmpeg",
   "libopus",
-  "libogg"
+  "libogg",
+  "libsodium",
+  "libnacl",
+  "pkgconfig"
 ]
 
 [phases.install]
