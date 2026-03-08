@@ -5,22 +5,15 @@ nixPkgs = [
   "libopus",
   "libogg",
   "libsodium",
-  "openssl",
-  "gcc",
-  "python312Packages.cffi",
-  "python312Packages.pynacl"
+  "pkg-config"
 ]
 
 [phases.install]
 cmds = [
   "python3 -m venv /opt/venv",
   ". /opt/venv/bin/activate && pip install --upgrade pip",
-  ". /opt/venv/bin/activate && pip install --force-reinstall PyNaCl",
-  ". /opt/venv/bin/activate && pip install -r requirements.txt"
+  "export SODIUM_LIB_DIR=/nix/store/*-libsodium-*/lib && export PKG_CONFIG_PATH=/nix/store/*-libsodium-*/lib/pkgconfig && . /opt/venv/bin/activate && pip install -r requirements.txt"
 ]
 
 [start]
-cmd = "export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/venv/lib:/nix/var/nix/profiles/default/lib:/run/current-system/lib && . /opt/venv/bin/activate && python3 main.py"
-
-[variables]
-LD_LIBRARY_PATH = "/opt/venv/lib:/nix/var/nix/profiles/default/lib:/run/current-system/lib"
+cmd = "export LD_LIBRARY_PATH=/nix/store/*-libsodium-*/lib:$LD_LIBRARY_PATH && export PKG_CONFIG_PATH=/nix/store/*-libsodium-*/lib/pkgconfig:$PKG_CONFIG_PATH && . /opt/venv/bin/activate && python3 main.py"
