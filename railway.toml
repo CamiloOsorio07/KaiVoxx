@@ -4,5 +4,8 @@ builder = "Nixpacks"
 [build.nixpacks]
 pkgs = ["ffmpeg", "libopus", "libsodium", "python312"]
 
+[deploy]
+env = { SODIUM_LIB_DIR = "/run/current-system/lib", PKG_CONFIG_PATH = "/run/current-system/lib/pkgconfig" }
+
 [start]
-cmd = "python3 main.py"
+cmd = "export LD_LIBRARY_PATH=/run/current-system/lib:$LD_LIBRARY_PATH && export PKG_CONFIG_PATH=/run/current-system/lib/pkgconfig:$PKG_CONFIG_PATH && python3 main.py"
