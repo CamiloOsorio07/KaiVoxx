@@ -32,17 +32,28 @@ async def build_ffmpeg_source(video_url: str):
         info = ytdl.extract_info(video_url, download=False)
         if not info:
             raise RuntimeError("No se pudo extraer info con yt-dlp")
+        
         stream_url = None
         if isinstance(info.get('url'), str):
             stream_url = info['url']
         else:
+            # Try multiple format options - best audio first
             formats = info.get('formats') or []
             for f in reversed(formats):
-                if (f.get('acodec') != 'none' and f.get('url') and f.get('ext') in ('m4a','webm','opus','ogg','mp3')):
+                if f.get('acodec') != 'none' and f.get('url') and f.get('ext') in ('m4a','webm','opus','ogg','mp3'):
                     stream_url = f['url']
                     break
+            
+            # If still no URL, try any available format with audio
+            if not stream_url:
+                for f in formats:
+                    if f.get('url') and f.get('acodec') != 'none':
+                        stream_url = f['url']
+                        break
+                        
         if not stream_url:
             raise RuntimeError('No se obtuvo URL de stream válida')
+        
         headers = info.get('http_headers', {})
         return stream_url, headers
 
@@ -96,3 +107,4 @@ async def build_mixed_ffmpeg_source(video_url: str, tts_path: str):
         before_options=before_options,
         options=options
     )
+

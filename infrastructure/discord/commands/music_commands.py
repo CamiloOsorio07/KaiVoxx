@@ -146,7 +146,7 @@ async def cmd_play(ctx, *, search: str):
     # start playback
     await start_playback_if_needed(ctx.guild)
 
-async def start_playback_if_needed(guild: 'discord.Guild'):
+async def start_playback_if_needed(guild: 'discord.Guild', retry_count: int = 0):
     vc = guild.voice_client
     if not vc or not vc.is_connected(): return
     queue = music_queues.get(guild.id)
@@ -161,9 +161,15 @@ async def start_playback_if_needed(guild: 'discord.Guild'):
             bot._current_song = getattr(bot, '_current_song', {})
             bot._current_song[guild.id] = song
             asyncio.create_task(send_now_playing_embed(bot, song))
-        except Exception:
+        except Exception as e:
             import logging; logging.exception("Error iniciando reproducción")
-            asyncio.create_task(song.channel.send("❌ Error al preparar el audio. Saltando..."))
+            # Auto-skip: try up to 3 more songs if one fails
+            if retry_count < 3:
+                asyncio.create_task(song.channel.send(f"⚠️ No se pudo reproducir: {song.title}. Intentando siguiente... ({retry_count + 1}/3)"))
+                await asyncio.sleep(0.5)
+                await start_playback_if_needed(guild, retry_count + 1)
+            else:
+                asyncio.create_task(song.channel.send(f"❌ No se pudo reproducir después de 3 intentos: {song.title}"))
 
 @bot.command(name="skip", aliases=["sk", "SK", "Skip", "next", "Next"])
 @requires_same_voice_channel_after_join()
