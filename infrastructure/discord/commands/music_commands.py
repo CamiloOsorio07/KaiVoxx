@@ -151,19 +151,24 @@ async def start_playback_if_needed(guild: 'discord.Guild'):
     if not vc or not vc.is_connected(): return
     queue = music_queues.get(guild.id)
     if not queue or len(queue) == 0: return
-    if not vc.is_playing():
+    if vc.is_playing() or vc.is_paused(): return
+    
+    # Try up to 3 songs if previous ones fail
+    for attempt in range(3):
+        if len(queue) == 0: break
         song = queue.dequeue()
-        if not song: return
+        if not song: break
         try:
             source = await build_ffmpeg_source(song.url)
             vc.play(source, after=lambda err: asyncio.run_coroutine_threadsafe(start_playback_if_needed(guild), bot.loop) or (print(f"Playback error: {err}" if err else "")))
-            # store current song in a simple dict on the bot
             bot._current_song = getattr(bot, '_current_song', {})
             bot._current_song[guild.id] = song
             asyncio.create_task(send_now_playing_embed(bot, song))
-        except Exception:
-            import logging; logging.exception("Error iniciando reproducción")
-            asyncio.create_task(song.channel.send("❌ Error al preparar el audio. Saltando..."))
+            return  # Success, stop trying
+        except Exception as e:
+            import logging; logging.exception(f"Error reproduciendo canción (intento {attempt + 1}): {song.title}")
+            asyncio.create_task(song.channel.send(f"⚠️ No se pudo reproducir: **{song.title}**. Intentando siguiente..."))
+            continue  # Try next song
 
 @bot.command(name="skip", aliases=["sk", "SK", "Skip", "next", "Next"])
 @requires_same_voice_channel_after_join()

@@ -1,6 +1,7 @@
 import asyncio
 import yt_dlp
 import discord
+import os
 from config.settings import COOKIE_FILE
 
 YTDL_OPTS = {
@@ -13,6 +14,8 @@ YTDL_OPTS = {
     'ignoreerrors': True,
     'skip_download': True,
     'nocheckcertificate': True,
+    # Better format selection for restricted videos
+    'format_sort': ['ext:opus:m4a', 'ext:webm:opus', 'ext:webm:opus', 'ext:m4a', 'ext:webm'],
 }
 if COOKIE_FILE:
     YTDL_OPTS['cookiefile'] = COOKIE_FILE
@@ -32,18 +35,33 @@ async def build_ffmpeg_source(video_url: str):
         info = ytdl.extract_info(video_url, download=False)
         if not info:
             raise RuntimeError("No se pudo extraer info con yt-dlp")
+        
         stream_url = None
+        headers = info.get('http_headers', {})
+        formats = info.get('formats') or []
+        
+        # First try: direct URL (for livestreams)
         if isinstance(info.get('url'), str):
             stream_url = info['url']
-        else:
-            formats = info.get('formats') or []
+        
+        # Second try: best audio format
+        if not stream_url:
             for f in reversed(formats):
-                if (f.get('acodec') != 'none' and f.get('url') and f.get('ext') in ('m4a','webm','opus','ogg','mp3')):
+                if f.get('acodec') != 'none' and f.get('url'):
+                    if f.get('ext') in ('m4a', 'webm', 'opus', 'ogg', 'mp3'):
+                        stream_url = f['url']
+                        break
+        
+        # Third try: any format with audio (fallback for restricted videos)
+        if not stream_url:
+            for f in formats:
+                if f.get('url') and f.get('acodec') != 'none':
                     stream_url = f['url']
                     break
+        
         if not stream_url:
             raise RuntimeError('No se obtuvo URL de stream válida')
-        headers = info.get('http_headers', {})
+        
         return stream_url, headers
 
     stream_url, headers = await asyncio.to_thread(_get_stream)
@@ -96,3 +114,4 @@ async def build_mixed_ffmpeg_source(video_url: str, tts_path: str):
         before_options=before_options,
         options=options
     )
+
