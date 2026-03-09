@@ -1,4 +1,5 @@
-import discord, asyncio, time, logging
+import discord, logging
+from datetime import datetime, timezone
 from infrastructure.discord.views.embeds import embed_music
 from integration.queue_shim import music_queues
 
@@ -120,23 +121,9 @@ async def send_now_playing_embed(bot, song):
         embed.set_thumbnail(url=f"https://img.youtube.com/vi/{song.url.split('=')[1]}/hqdefault.jpg")
     embed.add_field(name="Requested by", value=f"💜 {song.requester_name}", inline=True)
     embed.add_field(name="Source", value="YouTube 🎵", inline=True)
-    embed.add_field(name="Time Elapsed", value="0:00", inline=False)
+    # Use Discord's built-in timestamp for real-time display without API calls
+    # Discord automatically shows elapsed time based on start timestamp
+    embed.add_field(name="Started at", value="▶️ Reproduciendo", inline=False)
+    embed.timestamp = datetime.now(timezone.utc)
     msg = await song.channel.send(embed=embed, view=view)
     now_playing_messages[guild_id] = msg
-    asyncio.create_task(update_now_playing_bar(bot, guild_id, song))
-
-async def update_now_playing_bar(bot, guild_id, song):
-    start_time = time.time()
-    msg = now_playing_messages.get(guild_id)
-    if not msg: return
-    while True:
-        vc = msg.guild.voice_client
-        if not vc or not vc.is_playing(): break
-        elapsed = int(time.time() - start_time)
-        embed = msg.embeds[0]
-        embed.set_field_at(2, name="Time Elapsed", value=f"{elapsed//60:02}:{elapsed%60:02}", inline=False)
-        try:
-            await msg.edit(embed=embed)
-        except Exception:
-            break
-        await asyncio.sleep(1)
