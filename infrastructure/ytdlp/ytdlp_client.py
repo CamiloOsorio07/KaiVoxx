@@ -35,13 +35,21 @@ async def build_ffmpeg_source(video_url: str):
 
         # Si viene como playlist/radio, intenta tomar el primer entry válido
         if isinstance(info, dict) and info.get('entries'):
+            resolved_url = None
             for entry in info['entries'] or []:
                 if isinstance(entry, dict):
-                    video_url = entry.get('url') or entry.get('webpage_url') or video_url
-                    break
-            info = ytdl.extract_info(video_url, download=False)
+                    resolved_url = entry.get('url') or entry.get('webpage_url')
+                    if resolved_url:
+                        break
+            if not resolved_url:
+                raise RuntimeError("No se pudo resolver un entry válido (playlist/radio)")
+            info = ytdl.extract_info(resolved_url, download=False)
             if not info:
                 raise RuntimeError("No se pudo extraer info (tras resolver playlist/radio)")
+
+        # (Resolver playlist/radio se hace arriba con resolved_url; este bloque duplicado
+        # provoca errores si no se encuentra un entry válido.)
+
 
         stream_url = None
         if isinstance(info.get('url'), str):
@@ -80,7 +88,6 @@ async def build_mixed_ffmpeg_source(video_url: str, tts_path: str):
         info = ytdl.extract_info(video_url, download=False)
         if not info:
             raise RuntimeError("No se pudo extraer info")
-
         stream_url = info.get("url")
         if not stream_url:
             for f in reversed(info.get("formats", [])):
