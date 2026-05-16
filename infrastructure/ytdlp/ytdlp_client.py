@@ -32,19 +32,35 @@ async def build_ffmpeg_source(video_url: str):
         info = ytdl.extract_info(video_url, download=False)
         if not info:
             raise RuntimeError("No se pudo extraer info con yt-dlp")
+
+        # Si viene como playlist/radio, intenta tomar el primer entry válido
+        if isinstance(info, dict) and info.get('entries'):
+            for entry in info['entries'] or []:
+                if isinstance(entry, dict):
+                    video_url = entry.get('url') or entry.get('webpage_url') or video_url
+                    break
+            info = ytdl.extract_info(video_url, download=False)
+            if not info:
+                raise RuntimeError("No se pudo extraer info (tras resolver playlist/radio)")
+
         stream_url = None
         if isinstance(info.get('url'), str):
             stream_url = info['url']
         else:
             formats = info.get('formats') or []
             for f in reversed(formats):
-                if (f.get('acodec') != 'none' and f.get('url') and f.get('ext') in ('m4a','webm','opus','ogg','mp3')):
+                if (
+                    f.get('acodec') != 'none'
+                    and f.get('url')
+                    and f.get('ext') in ('m4a','webm','opus','ogg','mp3')
+                ):
                     stream_url = f['url']
                     break
         if not stream_url:
             raise RuntimeError('No se obtuvo URL de stream válida')
         headers = info.get('http_headers', {})
         return stream_url, headers
+
 
     stream_url, headers = await asyncio.to_thread(_get_stream)
     headers_str = ''
