@@ -19,10 +19,12 @@ if COOKIE_FILE:
     YTDL_OPTS['cookiefile'] = COOKIE_FILE
 
 
-def get_ytdl(no_format: bool = False):
+def get_ytdl(no_format: bool = False, no_flat: bool = False):
     opts = dict(YTDL_OPTS)
     if no_format:
         opts.pop('format', None)
+    if no_flat:
+        opts.pop('extract_flat', None)
     return yt_dlp.YoutubeDL(opts)
 
 
@@ -36,6 +38,45 @@ def _normalize_url(value):
     return None
 
 
+def _pick_stream_and_headers(info):
+    if not isinstance(info, dict):
+        raise RuntimeError("yt-dlp devolvió una respuesta inválida")
+
+    stream_url = None
+
+    if isinstance(info.get('url'), str) and info.get('url'):
+        stream_url = info['url']
+    else:
+        requested_formats = info.get('requested_formats') or []
+        for f in reversed(requested_formats):
+            if f.get('url'):
+                stream_url = f['url']
+                break
+
+        if not stream_url:
+            formats = info.get('formats') or []
+            for f in reversed(formats):
+                if (
+                    f.get('acodec') != 'none'
+                    and f.get('url')
+                    and f.get('ext') in ('m4a', 'webm', 'opus', 'ogg', 'mp3')
+                ):
+                    stream_url = f['url']
+                    break
+
+        if not stream_url:
+            for f in reversed(info.get('formats') or []):
+                if f.get('url'):
+                    stream_url = f['url']
+                    break
+
+    if not stream_url:
+        raise RuntimeError('No se obtuvo URL de stream válida')
+
+    headers = info.get('http_headers', {})
+    return stream_url, headers
+
+
 async def extract_info(search_or_url: str):
     ytdl = get_ytdl()
     return await asyncio.to_thread(lambda: ytdl.extract_info(search_or_url, download=False))
@@ -45,11 +86,14 @@ async def build_ffmpeg_source(video_url: str):
     before_options = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
 
     def _get_stream():
-        # Importante: sin 'format' aquí, para que yt-dlp no falle antes de que
-        # podamos elegir manualmente un stream válido.
-        ytdl = get_ytdl(no_format=True)
+        # Para reproducir, no usamos extract_flat ni forzamos format aquí.
+        ytdl = get_ytdl(no_format=True, no_flat=True)
 
-        info = ytdl.extract_info(video_url, download=False)
+        try:
+            info = ytdl.extract_info(video_url, download=False)
+        except Exception as e:
+            raise RuntimeError(f"No se pudo extraer info con yt-dlp: {e}")
+
         if not info:
             raise RuntimeError("No se pudo extraer info con yt-dlp")
 
@@ -82,44 +126,7 @@ async def build_ffmpeg_source(video_url: str):
             if not resolved_url:
                 raise RuntimeError("No se pudo resolver un entry válido (playlist/radio)")
 
-        if not isinstance(info, dict):
-            raise RuntimeError("yt-dlp devolvió una respuesta inválida")
-
-        stream_url = None
-
-        if isinstance(info.get('url'), str) and info.get('url'):
-            stream_url = info['url']
-        else:
-            # Primero intenta requested_formats
-            requested_formats = info.get('requested_formats') or []
-            for f in reversed(requested_formats):
-                if f.get('url'):
-                    stream_url = f['url']
-                    break
-
-            # Luego formatos normales
-            if not stream_url:
-                formats = info.get('formats') or []
-                for f in reversed(formats):
-                    if (
-                        f.get('acodec') != 'none'
-                        and f.get('url')
-                        and f.get('ext') in ('m4a', 'webm', 'opus', 'ogg', 'mp3')
-                    ):
-                        stream_url = f['url']
-                        break
-
-            # Último fallback: cualquier formato con URL
-            if not stream_url:
-                for f in reversed(info.get('formats') or []):
-                    if f.get('url'):
-                        stream_url = f['url']
-                        break
-
-        if not stream_url:
-            raise RuntimeError('No se obtuvo URL de stream válida')
-
-        headers = info.get('http_headers', {})
+        stream_url, headers = _pick_stream_and_headers(info)
         return stream_url, headers
 
     stream_url, headers = await asyncio.to_thread(_get_stream)
@@ -142,8 +149,13 @@ async def build_mixed_ffmpeg_source(video_url: str, tts_path: str):
     before_options = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
 
     def _get_stream():
-        ytdl = get_ytdl(no_format=True)
-        info = ytdl.extract_info(video_url, download=False)
+        ytdl = get_ytdl(no_format=True, no_flat=True)
+
+        try:
+            info = ytdl.extract_info(video_url, download=False)
+        except Exception as e:
+            raise RuntimeError(f"No se pudo extraer info: {e}")
+
         if not info:
             raise RuntimeError("No se pudo extraer info")
 
@@ -175,31 +187,7 @@ async def build_mixed_ffmpeg_source(video_url: str, tts_path: str):
             if not resolved_url:
                 raise RuntimeError("No se pudo resolver un entry válido (playlist/radio)")
 
-        stream_url = None
-        if isinstance(info.get("url"), str) and info.get("url"):
-            stream_url = info["url"]
-        else:
-            for f in reversed(info.get("requested_formats") or []):
-                if f.get("url"):
-                    stream_url = f["url"]
-                    break
-
-            if not stream_url:
-                for f in reversed(info.get("formats", [])):
-                    if f.get("acodec") != "none" and f.get("url"):
-                        stream_url = f["url"]
-                        break
-
-            if not stream_url:
-                for f in reversed(info.get("formats") or []):
-                    if f.get("url"):
-                        stream_url = f["url"]
-                        break
-
-        if not stream_url:
-            raise RuntimeError("No se obtuvo stream válido")
-
-        headers = info.get("http_headers", {})
+        stream_url, headers = _pick_stream_and_headers(info)
         return stream_url, headers
 
     stream_url, headers = await asyncio.to_thread(_get_stream)
