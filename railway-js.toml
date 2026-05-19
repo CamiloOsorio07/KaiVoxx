@@ -1,0 +1,14 @@
+[build]
+builder = "Nixpacks"
+
+[build.nixpacks]
+# Paquetes del sistema para audio
+pkgs = [
+  "ffmpeg",
+  "libopus",
+  "libogg",
+]
+
+[start]
+cmd = "cd js-kaivoxx-bot && npm install && npm start"
+

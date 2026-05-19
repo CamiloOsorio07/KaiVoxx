@@ -1,0 +1,16 @@
+[phases.setup]
+nixPkgs = [
+  "nodejs",
+  "ffmpeg",
+  "libopus",
+  "libogg"
+]
+
+[phases.install]
+cmds = [
+  "npm install"
+]
+
+[start]
+cmd = "cd js-kaivoxx-bot && npm start"
+
