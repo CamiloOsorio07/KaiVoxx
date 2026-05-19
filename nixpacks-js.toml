@@ -1,6 +1,8 @@
 [phases.setup]
+# Asegura que exista node/npm (Nixpacks usa esta lista para instalar pkgs)
 nixPkgs = [
   "nodejs",
+  "npm",
   "ffmpeg",
   "libopus",
   "libogg"
@@ -9,6 +11,7 @@ nixPkgs = [
 [phases.install]
 cmds = [
   "npm install"
+  # evita que npm start tarde demasiado en fallar si falta node
 ]
 
 [start]
