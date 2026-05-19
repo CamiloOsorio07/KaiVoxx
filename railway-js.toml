@@ -2,14 +2,10 @@
 builder = "Nixpacks"
 
 [build.nixpacks]
-# Paquetes del sistema para audio
-pkgs = [
-  "ffmpeg",
-  "libopus",
-  "libogg",
-]
+# Asegura un build 100% JS (incluye node/npm) para que NO intente usar Python.
+pkgs = ["nodejs", "npm", "ffmpeg", "libopus", "libogg"]
 
 [start]
-# Ejecuta SOLO el bot JS (sin iniciar el bot Python)
+# Ejecuta SOLO el bot JS
 cmd = "cd js-kaivoxx-bot && npm start"
 
