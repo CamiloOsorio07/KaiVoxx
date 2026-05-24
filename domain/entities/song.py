@@ -8,3 +8,6 @@ class Song:
     requester_name: str
     channel: Any
     source: str = "YouTube"
+
+    # Lazy loading para entradas de playlists.
+    lazy_load: bool = False

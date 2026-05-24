@@ -77,10 +77,15 @@ async def play_music(ctx, search: str):
 
     if isinstance(info, dict) and 'entries' in info and info['entries']:
         for count, entry in enumerate(info['entries']):
-            if count >= 200: break
-            url = entry.get('webpage_url') or entry.get('url')
+            if count >= 200:
+                break
+
+            # Con extract_flat='in_playlist' puede que no venga una URL lista.
+            # Guardamos lo que haya y dejamos que build_ffmpeg_source resuelva.
+            url = entry.get('webpage_url') or entry.get('url') or entry.get('id')
             title = entry.get('title', 'Unknown title')
-            if queue.enqueue(Song(url, title, str(ctx.author), ctx.channel)):
+
+            if url and queue.enqueue(Song(url, title, str(ctx.author), ctx.channel, lazy_load=True)):
                 songs_added += 1
         await ctx.send(embed=embed_music(
             "Playlist / Mix añadido",
@@ -124,10 +129,13 @@ async def cmd_play(ctx, *, search: str):
 
     if isinstance(info, dict) and 'entries' in info and info['entries']:
         for count, entry in enumerate(info['entries']):
-            if count >= 200: break
-            url = entry.get('webpage_url') or entry.get('url')
+            if count >= 200:
+                break
+
+            url = entry.get('webpage_url') or entry.get('url') or entry.get('id')
             title = entry.get('title', 'Unknown title')
-            if queue.enqueue(Song(url, title, str(ctx.author), ctx.channel)):
+
+            if url and queue.enqueue(Song(url, title, str(ctx.author), ctx.channel, lazy_load=True)):
                 songs_added += 1
         await ctx.send(embed=embed_music(
             "Playlist / Mix añadido",
@@ -155,9 +163,18 @@ async def start_playback_if_needed(guild: 'discord.Guild'):
         song = queue.dequeue()
         if not song: return
         try:
+            # build_ffmpeg_source ya resuelve la info y stream.
+            # Para playlists, song.lazy_load=True solo indica que la info
+            # fue encolada de forma ligera.
             source = await build_ffmpeg_source(song.url)
-            vc.play(source, after=lambda err: asyncio.run_coroutine_threadsafe(start_playback_if_needed(guild), bot.loop) or (print(f"Playback error: {err}" if err else "")))
-            # store current song in a simple dict on the bot
+            vc.play(
+                source,
+                after=lambda err: asyncio.run_coroutine_threadsafe(
+                    start_playback_if_needed(guild),
+                    bot.loop
+                ) or (print(f"Playback error: {err}" if err else ""))
+            )
+
             bot._current_song = getattr(bot, '_current_song', {})
             bot._current_song[guild.id] = song
             asyncio.create_task(send_now_playing_embed(bot, song))

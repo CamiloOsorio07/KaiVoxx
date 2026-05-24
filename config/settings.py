@@ -7,7 +7,7 @@ GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 BOT_PREFIX = "#"
 MAX_QUEUE_LENGTH = int(os.environ.get("MAX_QUEUE_LENGTH", "500"))
-MAX_TTS_CHARS = int(os.environ.get("MAX_TTS_CHARS", "180"))
+MAX_TTS_CHARS = int(os.environ.get("MAX_TTS_CHARS", "300"))
 TTS_LANGUAGE = os.environ.get("TTS_LANGUAGE", "es")
 
 SYSTEM_PROMPT = (

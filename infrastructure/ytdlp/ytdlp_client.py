@@ -165,11 +165,16 @@ def _extract_valid_stream(info: dict):
 
 
 async def extract_info(search_or_url: str):
-    """
-    Para reproducción SIEMPRE sin extract_flat.
+    """Extrae info para canción/playlist/radio.
+
+    IMPORTANTE:
+    - Para playlists/mixes queremos usar extract_flat='in_playlist'
+      (opción ya definida en YTDL_OPTS) para evitar el procesamiento pesado
+      de todos los entries.
     """
 
-    ytdl = get_ytdl(no_flat=True)
+    # NO fuerces no_flat=True: queremos que extract_flat='in_playlist' se aplique.
+    ytdl = get_ytdl(no_flat=False)
 
     return await asyncio.to_thread(
         lambda: ytdl.extract_info(
